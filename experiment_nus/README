@@ -1,0 +1,5 @@
+Experiments for Non Uniform Sampling i.e. obtaining estimates of aggregates from stratified or weighted samples
+
+nus_aggregation_test.ipynb
+> implementations of aggregation estimators, and plots of the produced errors.
+> these implementations formed the basis for the implementations in the full experiments

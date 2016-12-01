@@ -1,0 +1,47 @@
+All experiments and tools for testing HWS (Heuristic Weighted Sampling)
+It is sometimes refered to as AWS (Approximate Weighted Sampling) for legacy reasons
+
+
+A list of files with a short description of their functions
+----------------------------------------------------------
+
+sampling_probabilities.R
+> script for computing selection probability of samples for a range of sampling algorithms. 
+> Functions are implemented several times to assure correctness:
+    > simulation_*: very simple implementation, used since their correctness is easily checked, but very slow
+    > log_* compute logaritmic probabilities to avoid problems with extremely small numbers that cannot be stored as standard double precision floating points
+    > sampling_probability_{body, includes}.cpp, written in c++ for speedup
+
+aws_vs_ws_experiment.R
+> script to compute confidence interval on selection probability using WS and HWS sampling
+
+distributionGeneration.R
+> script to generate data distributions with certain sparsity and skew (uses solvers.R)
+
+solvers.R
+> a simulated annealing solver and a brute force solver
+
+sampling_utils.R
+> general utilities
+
+weighted_linear_sampling.R
+> attempt at implementing Weighted Linear Sampling by Motwani et al
+
+
+aws_experiments.nb
+> notebook to analyse heuristic of HWS, used to try to improve heuristic in HWS
+
+bday_problem.nb
+> Attempt at parametrizing upper and lower bounds of the weighted birthday problemm
+
+JoinExperiments.nb
+> Attempt at generating data in a natural way given sparsity and bias directly
+
+log_mean.nb
+> Efficient way to compute the mean of logarithms of numbers, without exponating them
+
+
+aws_experiment_plots.ipynb
+> tools to make plots
+
+

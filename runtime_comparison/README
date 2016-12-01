@@ -1,0 +1,14 @@
+Tool to compare speed of WS-join and US-join when R1 and R2 are on different storage media.
+
+main.cpp
+> tool to run benchmarks
+> Data on disk can be generated using ``randomreadtimes'' gendata.cpp
+
+flush.cpp
+> we wrote this tool to flush:
+    > the linux page file
+    > the CPU cashe
+    > anything in main memory (size is hard coded for now)
+> this tool was initially ran inbetween experiments to ensure cold starts
+
+

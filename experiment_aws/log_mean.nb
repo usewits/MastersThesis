@@ -1,0 +1,107 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Mathematica 10.3' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       158,          7]
+NotebookDataLength[      3016,         98]
+NotebookOptionsPosition[      2673,         82]
+NotebookOutlinePosition[      3009,         97]
+CellTagsIndexPosition[      2966,         94]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+Cell[BoxData[
+ RowBox[{"(*", 
+  RowBox[{
+   RowBox[{
+   "Quick", " ", "exploration", " ", "of", " ", "efficient", " ", "way", " ", 
+    "to", " ", "compute", " ", "the", " ", "mean", " ", "of", " ", 
+    "logarithms", " ", "of", " ", "numbers"}], ",", " ", 
+   RowBox[{"without", " ", "exponating", " ", "them"}]}], "*)"}]], "Input",
+ CellChangeTimes->{{3.689511935012836*^9, 3.689511959104651*^9}, {
+  3.689512011173141*^9, 3.689512071070022*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Log", "[", 
+   RowBox[{
+    RowBox[{"Exp", "[", "a", "]"}], "+", 
+    RowBox[{"Exp", "[", "b", "]"}]}], "]"}], "\[Equal]", 
+  RowBox[{"a", "+", 
+   RowBox[{"Log", "[", 
+    RowBox[{"1", "+", 
+     RowBox[{"Exp", "[", 
+      RowBox[{"b", "-", "a"}], "]"}]}], "]"}]}]}]], "Input"],
+
+Cell["\<\
+Can apply this rule repeatedly (using fold). Only usefull if exp(b-a) is \
+easier than exp(b) and exp(a). In our case the problem is that a,b can be \
+very negative (~ -30), so their exponent is smaller than floating point \
+precision. However, exp(b-a) will have a more reasonable value!\
+\>", "Text",
+ CellChangeTimes->{{3.679215744151555*^9, 3.679215934770742*^9}, {
+  3.6792194056819897`*^9, 3.679219409193882*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Log", "[", 
+   RowBox[{
+    RowBox[{"Exp", "[", "a", "]"}], "+", 
+    RowBox[{"Exp", "[", "b", "]"}], "+", 
+    RowBox[{"Exp", "[", "c", "]"}]}], "]"}], "==", 
+  RowBox[{"a", "+", 
+   RowBox[{"Log", "[", 
+    RowBox[{"1", "+", 
+     RowBox[{"Exp", "[", 
+      RowBox[{"b", "+", 
+       RowBox[{"Log", "[", 
+        RowBox[{"1", "+", 
+         RowBox[{"Exp", "[", 
+          RowBox[{"c", "-", "b"}], "]"}]}], "]"}], "-", "a"}], "]"}]}], 
+    "]"}]}], "==", 
+  RowBox[{"a", "+", 
+   RowBox[{"Log", "[", 
+    RowBox[{"1", "+", 
+     RowBox[{"Exp", "[", 
+      RowBox[{"b", "-", "a", "+", 
+       RowBox[{"Log", "[", 
+        RowBox[{"1", "+", 
+         RowBox[{"Exp", "[", 
+          RowBox[{"c", "-", "b"}], "]"}]}], "]"}]}], "]"}]}], 
+    "]"}]}]}]], "Input",
+ CellChangeTimes->{{3.6792155888337727`*^9, 3.6792156142740593`*^9}, {
+  3.689511984327751*^9, 3.689511995441638*^9}}]
+},
+WindowSize->{1916, 1037},
+WindowMargins->{{0, Automatic}, {Automatic, 20}},
+FrontEndVersion->"10.1 for Linux x86 (64-bit) (March 23, 2015)",
+StyleDefinitions->"Default.nb"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[558, 20, 448, 9, 32, "Input"],
+Cell[1009, 31, 313, 10, 32, "Input"],
+Cell[1325, 43, 429, 7, 31, "Text"],
+Cell[1757, 52, 912, 28, 32, "Input"]
+}
+]
+*)
+
+(* End of internal cache information *)

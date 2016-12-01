@@ -1,0 +1,19 @@
+The most important code used in my Masters Thesis. This code was not written to be readable or reused by people who are not Abe Wits; development speed was favored. I am considering releasing some of the tools that may be interesting for the general public; if this happens, a separate repository with the improved code + documentation will appear.
+
+An overview of the folders in this document:
+
+experiment_nus
+> experiments to test Non Uniform Sampling techniques for aggregation
+
+experiment_aws
+> experiments to test Heuristic Weighted Sampling
+
+experiment_full
+> experiments to test sample-Join + aggregation strategies
+
+randomreadtimes
+> tool to test read speed in memory and on disk
+
+runtime_comparison
+> tool to compare runtime of WS-sample join and US-sample join when the relations are in different storage media
+

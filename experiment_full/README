@@ -1,0 +1,20 @@
+Experiments for the complete system, sample-join + aggregation
+Contains some symbolic links to files in experiment_aws that are required here.
+
+
+A list of files with a short description of their functions
+----------------------------------------------------------
+
+compare_experiments.R
+> Script to compare different strategies
+> Supports different sample-join algorithms: US-join, WS-join, HWS-join
+> Supports different aggregation techniques: uniform, stratified, weighted
+
+custom_weighted_sum_join_body.cpp + naive_weighted_sum_join_includes.cpp
+> fast US-join and WS-join implementation
+> uniform, key-stratified and weighted aggregation functions (no range-strata yet)
+
+joinsAndStrata.R
+> utilities, including mini-join and stratification
+
+
