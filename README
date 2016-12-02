@@ -1,6 +1,6 @@
 The most important code used in my Masters Thesis. This code was not written to be readable or reused by people who are not Abe Wits; development speed was favored. I am considering releasing some of the tools that may be interesting for the general public; if this happens, a separate repository with the improved code + documentation will appear.
 
-An overview of the folders in this document:
+An overview of the folders in this repository:
 
 experiment_nus
 > experiments to test Non Uniform Sampling techniques for aggregation
