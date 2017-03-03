@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cmath>
+#include <cstring>
 #include <assert.h>
 #include <algorithm>
 #include <numeric>
@@ -158,23 +159,25 @@ int main() {
     }
     vector<double> SSJ_c_prob = get_cdf(SSJ_prob);
     
+    string                          sample_types[] = {"SSJ     ","HSSJ    ","WS-Join ","HWS-Join",  "US-Join "};
+    function<double(double,double)> h1_functions[] = { h1_unif,   h1_unif,  h1_weighted,h1_weighted, h1_US};
+    function<double(double)>        h2_functions[] = { h2_unif,   h2_unif,  h2_weighted,h2_weighted, h2_unif};
+    function<vector<int>(int, vector<double>)> samplers[] = 
+                        { exact_sampler, heuristic_sampler, exact_sampler, heuristic_sampler, exact_sampler};
+    
     int nruns = 1;
     for(int run_i=0; run_i<nruns; run_i++) {
         int k = k_factor * m*m * sigma_factor
                 * (*max_element(SSJ_prob.begin(), SSJ_prob.end()))
                 / (*min_element(SSJ_prob.begin(), SSJ_prob.end()));//HWS-heuristic
         cout << "k  :" << k << endl;
-    //Compact alternatives
-        cout << "SSJ:" << 
-            generic_sample_join(h1_unif, h2_unif, m, R1, R2, exact_sampler, aggregate_f) << endl;
-        cout << "HSSJ:" << 
-            generic_sample_join(h1_unif, h2_unif, m, R1, R2, heuristic_sampler, aggregate_f) << endl;
-        cout << "WS_join:" <<
-                generic_sample_join(h1_weighted, h2_weighted, m, R1, R2, exact_sampler, aggregate_f) << endl;
-        cout << "HWS_join:" <<
-                generic_sample_join(h1_weighted, h2_weighted, m, R1, R2, heuristic_sampler, aggregate_f) << endl;
-        cout << "US_join:" <<
-                generic_sample_join(h1_US, h2_unif, m, R1, R2, exact_sampler, aggregate_f) << endl;
+
+        for(int i = 0; i < 5; i++) {
+            double estimate = generic_sample_join(h1_functions[i], h2_functions[i], 
+                                                    m, R1, R2, samplers[i], aggregate_f);
+            cout << sample_types[i] << ": " << round(estimate*1000)/1000 << endl;
+            cout << "\t" << abs(true_aggregate-estimate)/true_aggregate*100 << "% relative-error" << endl;
+        }
     }
     
     return 0;
