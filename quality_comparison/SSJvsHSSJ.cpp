@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <algorithm>
 #include <numeric>
+#include <set>
 #include <functional>
 #include "sampleJoins.h"
 
@@ -159,6 +160,7 @@ int main() {
     }
     vector<double> SSJ_c_prob = get_cdf(SSJ_prob);
     
+    set<int> sampling_methods_used = {0,1,2,3,4};
     string                          sample_types[] = {"SSJ     ","HSSJ    ","WS-Join ","HWS-Join",  "US-Join "};
     function<double(double,double)> h1_functions[] = { h1_unif,   h1_unif,  h1_weighted,h1_weighted, h1_US};
     function<double(double)>        h2_functions[] = { h2_unif,   h2_unif,  h2_weighted,h2_weighted, h2_unif};
@@ -173,7 +175,11 @@ int main() {
             * (*max_element(SSJ_prob.begin(), SSJ_prob.end()))
             / (*min_element(SSJ_prob.begin(), SSJ_prob.end()));//HWS-heuristic
     cout << "k  :" << k << " (should be smaller than " << R1.size() << ")"<< endl;
-    assert(k < R1.size());
+    if(k > R1.size()) {
+        cout << "WARNING: Skipping Heuristic methods!" << endl;
+        sampling_methods_used.erase(1);
+        sampling_methods_used.erase(3);
+    }
         
 
     
@@ -181,7 +187,7 @@ int main() {
         if(round(10*run_i/(double)nruns) > round(10*(run_i-1)/(double)nruns)) {
             cout << round(100*run_i/(double)nruns) << "% done.." << endl;
         }
-        for(int i = 0; i < 5; i++) {
+        for(int i : sampling_methods_used) {
             double estimate = generic_sample_join(h1_functions[i], h2_functions[i], 
                                                     m, R1, R2, samplers[i], aggregate_f);
             relative_errors[i][run_i] = abs(true_aggregate-estimate)/true_aggregate;
@@ -190,7 +196,7 @@ int main() {
         }
     }
 
-    for(int i = 0; i < 5; i++) {
+    for(int i : sampling_methods_used) {
         cout << sample_types[i] << ":" << endl;
         show_sigma_levels(relative_errors[i]);
     }
