@@ -105,12 +105,25 @@ int main() {
     vector<double> R1B = get_distribution(n1,1.0,n1);
     vector<pdd> R1 = zipvec(R1A, R1B);
     auto stratR1 = stratify(R1);
-    
+
+    int n2          = 1000;
+    double skew2    = 1.0;
+    double ratio2   = 50.0;
+    int n_discrete2 = 10.0;
+    vector<double> R2A = get_distribution(n2,skew2,ratio2,n_discrete2);
+    vector<double> R2C = get_distribution(n2,1.0,n2);
+    vector<pdd> R2 = zipvec(R2A, R2C);
+    Tstrat stratR2 = stratify(R2);
+   
     auto aggregate_f = [] (double A, double B, double C) -> double {return C;};
-    auto h1_unif = [] (double A, double B) -> double {return 1.0;};
+
+    auto h1_unif =     []   (double A, double B) -> double {return 1.0;};
+    auto h1_US = [&stratR2] (double A, double B) -> double {return 1.0/(double)(stratR2[A].size());};
+    auto h1_weighted = []   (double A, double B) -> double {return 1.0;};
+
     auto h2_unif = [] (double C) -> double {return 1.0;};
-    auto h1_weighted = [] (double A, double B) -> double {return 1.0;};
     auto h2_weighted = [] (double C) -> double {return C;};
+
     auto exact_sampler = [] (int m, vector<double> w) -> vector<int> {
                                 return weighted_sample_indices(w.size(), get_cdf(w), m);
                             };
@@ -129,17 +142,7 @@ int main() {
                                 }
                                 return weighted_sample(U, get_cdf(U_w), m);
                             };
-
-    int n2          = 1000;
-    double skew2    = 1.0;
-    double ratio2   = 50.0;
-    int n_discrete2 = 10.0;
-    vector<double> R2A = get_distribution(n2,skew2,ratio2,n_discrete2);
-    vector<double> R2C = get_distribution(n2,1.0,n2);
-    vector<pdd> R2 = zipvec(R2A, R2C);
-    Tstrat stratR2 = stratify(R2);
-    auto R2stratcounts = stratify_counts(R2);
-    
+ 
     auto J = join(stratR1, stratR2);
     double true_aggregate = 0.0;
     for(auto j : J)
@@ -151,8 +154,8 @@ int main() {
     vector<double> SSJ_prob(n1);
     for(int i=0; i<n1; i++) {
         double key = R1[i].first;
-        SSJ_prob[i] = R2stratcounts[key];
-           //note R2stratcounts[key] = m_2(t_1.A)
+        SSJ_prob[i] = stratR2[key].size();
+           //note stratR2[key].size() = m_2(t_1.A)
     }
     vector<double> SSJ_c_prob = get_cdf(SSJ_prob);
     
@@ -194,6 +197,8 @@ int main() {
                 generic_sample_join(h1_weighted, h2_weighted, m, R1, R2, exact_sampler, aggregate_f) << endl;
         cout << "HWS_join:" <<
                 generic_sample_join(h1_weighted, h2_weighted, m, R1, R2, heuristic_sampler, aggregate_f) << endl;
+        cout << "US_join:" <<
+                generic_sample_join(h1_US, h2_unif, m, R1, R2, exact_sampler, aggregate_f) << endl;
         
     }
     
