@@ -127,13 +127,12 @@ int main() {
     auto exact_sampler = [] (int m, vector<double> w) -> vector<int> {
                                 return weighted_sample_indices(w.size(), get_cdf(w), m);
                             };
-    auto heuristic_sampler = [] (int m, vector<double> w) -> vector<int> {
+    auto heuristic_sampler = [&sigma,&k_factor] (int m, vector<double> w) -> vector<int> {
                                 double w_max = (*max_element(w.begin(), w.end()));
                                 double w_min = (*min_element(w.begin(), w.end()));
-                                double sigma = 0.99;//capture instead?
                                 double sigma_factor = 1.0/log(1.0/sigma);
 
-                                int k = m*m*w_max/w_min*sigma_factor;
+                                int k = k_factor*sigma_factor* m*m * w_max/w_min;
     
                                 vector<int> U = sample_indices(w.size(), k);
                                 vector<double> U_w(k);
@@ -161,37 +160,14 @@ int main() {
     
     int nruns = 1;
     for(int run_i=0; run_i<nruns; run_i++) {
-    //SSJ
-        vector<pdd> SSJ_S = weighted_sample(R1, SSJ_c_prob, m);
-        vector<tdd> SSJ_samp = minijoin(SSJ_S, stratR2);
-        double SSJ_estimate = 0.0;
-        for(auto t : SSJ_samp)
-            SSJ_estimate += aggregate_f(get<0>(t), get<1>(t), get<2>(t));
-        SSJ_estimate *= J.size()/(double)SSJ_samp.size();
-        cout << "SSJ   :" << SSJ_estimate << endl;
-
-    //HSSJ
         int k = k_factor * m*m * sigma_factor
                 * (*max_element(SSJ_prob.begin(), SSJ_prob.end()))
                 / (*min_element(SSJ_prob.begin(), SSJ_prob.end()));//HWS-heuristic
-        vector<int> HSSJ_U_indices = sample_indices(R1.size(), k);
-        vector<double> HSSJ_U_prob(k);
-        vector<pdd> HSSJ_U(k);
-        for(int i=0; i<k; i++) {
-            HSSJ_U_prob[i] = SSJ_prob[HSSJ_U_indices[i]];
-            HSSJ_U[i] = R1[HSSJ_U_indices[i]];
-        }
-        vector<pdd> HSSJ_S = weighted_sample(HSSJ_U, get_cdf(HSSJ_U_prob), m);
-        vector<tdd> HSSJ_samp = minijoin(HSSJ_S, stratR2);
-        double HSSJ_estimate = 0.0;
-        for(auto t : HSSJ_samp)
-            HSSJ_estimate += aggregate_f(get<0>(t), get<1>(t), get<2>(t));
-        HSSJ_estimate *= J.size()/(double)HSSJ_samp.size();
-        cout << "HSSJ  :" << HSSJ_estimate << " (k = " << k << ")" << endl;
+        cout << "k  :" << k << endl;
     //Compact alternatives
-        cout << "SSJ_alt:" << 
+        cout << "SSJ:" << 
             generic_sample_join(h1_unif, h2_unif, m, R1, R2, exact_sampler, aggregate_f) << endl;
-        cout << "HSSJ_alt:" << 
+        cout << "HSSJ:" << 
             generic_sample_join(h1_unif, h2_unif, m, R1, R2, heuristic_sampler, aggregate_f) << endl;
         cout << "WS_join:" <<
                 generic_sample_join(h1_weighted, h2_weighted, m, R1, R2, exact_sampler, aggregate_f) << endl;
@@ -199,7 +175,6 @@ int main() {
                 generic_sample_join(h1_weighted, h2_weighted, m, R1, R2, heuristic_sampler, aggregate_f) << endl;
         cout << "US_join:" <<
                 generic_sample_join(h1_US, h2_unif, m, R1, R2, exact_sampler, aggregate_f) << endl;
-        
     }
     
     return 0;
