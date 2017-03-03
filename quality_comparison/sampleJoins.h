@@ -215,4 +215,13 @@ vector<tdd> minijoin(const vector<pdd>& S, const Tstrat& R2) {
 }
 
 
+void show_sigma_levels(vector<double>& relative_errors) {
+    sort(relative_errors.begin(), relative_errors.end());
+    double sigmas[] = {0.9, 0.95, 0.99};
+    for(double sigma : sigmas) {
+        double epsilon = relative_errors[(int)round(sigma*relative_errors.size())];
+        cout << "\tapproximation (sigma = "<<sigma<<", epsilon = "<<epsilon*100<<"%)"<<endl;
+    }
+}
+
 

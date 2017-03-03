@@ -93,12 +93,12 @@ int main() {
     mt = mtwist_new();
     mtwist_seed(mt, 832982837UL);
 
-    int m = 100;
+    int m = 20;
     double k_factor = 1.0;
     double sigma = 0.99;
     double sigma_factor = 1.0/log(1/sigma);
 
-    int n1          = 100;
+    int n1          = 100000;
     double skew1    = 1.0;
     double ratio1   = 20.0;
     int n_discrete1 = 10.0;
@@ -165,19 +165,34 @@ int main() {
     function<vector<int>(int, vector<double>)> samplers[] = 
                         { exact_sampler, heuristic_sampler, exact_sampler, heuristic_sampler, exact_sampler};
     
-    int nruns = 1;
-    for(int run_i=0; run_i<nruns; run_i++) {
-        int k = k_factor * m*m * sigma_factor
-                * (*max_element(SSJ_prob.begin(), SSJ_prob.end()))
-                / (*min_element(SSJ_prob.begin(), SSJ_prob.end()));//HWS-heuristic
-        cout << "k  :" << k << endl;
+    int nruns = 100;
+    
+    vector< vector<double> > relative_errors(5, vector<double>(nruns, 0));
+    
+    int k = k_factor * m*m * sigma_factor
+            * (*max_element(SSJ_prob.begin(), SSJ_prob.end()))
+            / (*min_element(SSJ_prob.begin(), SSJ_prob.end()));//HWS-heuristic
+    cout << "k  :" << k << " (should be smaller than " << R1.size() << ")"<< endl;
+    assert(k < R1.size());
+        
 
+    
+    for(int run_i=0; run_i<nruns; run_i++) {
+        if(round(10*run_i/(double)nruns) > round(10*(run_i-1)/(double)nruns)) {
+            cout << round(100*run_i/(double)nruns) << "% done.." << endl;
+        }
         for(int i = 0; i < 5; i++) {
             double estimate = generic_sample_join(h1_functions[i], h2_functions[i], 
                                                     m, R1, R2, samplers[i], aggregate_f);
-            cout << sample_types[i] << ": " << round(estimate*1000)/1000 << endl;
-            cout << "\t" << abs(true_aggregate-estimate)/true_aggregate*100 << "% relative-error" << endl;
+            relative_errors[i][run_i] = abs(true_aggregate-estimate)/true_aggregate;
+            //cout << sample_types[i] << ": " << round(estimate*1000)/1000.0 << endl;
+            //cout << "\t" << abs(true_aggregate-estimate)/true_aggregate*100 << "% relative-error" << endl;
         }
+    }
+
+    for(int i = 0; i < 5; i++) {
+        cout << sample_types[i] << ":" << endl;
+        show_sigma_levels(relative_errors[i]);
     }
     
     return 0;
