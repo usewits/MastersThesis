@@ -10,20 +10,23 @@
 
 using namespace std;
 
+//Generate weights (n elements), with a selected skew ratio and number of discrete values.
 vector<double> get_distribution(int n, double skew, double ratio = 0.0, double n_discrete = 0.0) {
     if(ratio == 0.0) {
+        //Either the ratio or n_discrete has to be defined 
         assert(n_discrete != 0);
         ratio = n_discrete;
     }
     vector<double> w(n);
     for(int i=0; i<n; i++)
-        w[i] = pow(mtwist_drand(mt), skew);
+        w[i] = pow(mtwist_drand(mt), skew); //the weights are in [0,1[ with a (polynomial) skew
     double max_w = *max_element(w.begin(), w.end());
     double sum_w = 0;
     for(int i=0; i<n; i++) {
-        w[i] = (w[i]/max_w)*(ratio-1.0)+1.0;
+        w[i] = (w[i]/max_w)*(ratio-1.0)+1.0; //the weights are in [1, ratio[
         sum_w += w[i];
     }
+    //normalise the weights
     for(int i=0; i<n; i++)
         w[i] /= sum_w;
 
@@ -37,35 +40,50 @@ vector<double> get_distribution(int n, double skew, double ratio = 0.0, double n
     return w;    
 }
 
-
-//Runs in O(n_1 log n_1+n_2 log n_2)
+//Generic function to estimate aggregates over joins
+//It can be used to obtain SSJ, HSSJ, WS-Join, HWS-Join or US-Join estimates (both filtered and unfiltered)
+//Runs in O(n_1 log n_1+n_2 log n_2) (not as fast as possible, in favour of shorter code)
 //Output probability is h1*h2
 double generic_sample_join(function<double(double,double)> h1, function<double(double)> h2, int m,
                                 const vector<pdd>& R1, const vector<pdd>& R2,
                                 function<vector<int>(int, vector<double>)> range_sampler,
                                             //sample(sample_size, weights)
-                                function<double(double, double, double)> aggregation_f) {
+                                function<double(double, double, double)> aggregation_f,
+                                function<bool(double, double)> R1_filter,//predicate; true => selected
+                                function<bool(double, double)> R2_filter, bool filtered_estimator) {
+
     Tstrat R2_stratified = stratify(R2);
     map<double, double> R2_stratum_weights;
+    map<double, double> R2_filtered_stratum_weights;
     map<double, vector<double> > R2_stratum_cdfs;
     for(auto stratum : R2_stratified) {
         double key = stratum.first;
         double norm = 0.0;
+        double filtered_norm = 0.0;
         vector<double> stratum_weights(stratum.second.size());
         for(int i=0; i<stratum.second.size(); i++) {
             pdd t2 = stratum.second[i];
             stratum_weights[i] = h2(t2.second);
             norm += stratum_weights[i];
+            if(R2_filter(t2.first, t2.second))
+                filtered_norm += stratum_weights[i]; 
         }
         R2_stratum_weights[key] = norm;
+        R2_filtered_stratum_weights[key] = norm;
         R2_stratum_cdfs[key] = get_cdf(stratum_weights);
     }
     double normalisation = 0.0;
+    double filtered_normalisation = 0.0;
     vector<double> R1_sample_weights(R1.size());
+    vector<double> R1_filtered_sample_weights(R1.size(), 0.0);
     for(int i=0; i<R1.size(); i++) {
         pdd t1 = R1[i];
         R1_sample_weights[i] = h1(t1.first, t1.second) * R2_stratum_weights[t1.first];
         normalisation += R1_sample_weights[i];
+        if(R1_filter(t1.first, t1.second)) {
+            R1_filtered_sample_weights[i] = h1(t1.first, t1.second) * R2_filtered_stratum_weights[t1.first];
+            filtered_normalisation += R1_filtered_sample_weights[i];
+        }
     }
     
     vector<int> S_indices = range_sampler(m, R1_sample_weights);
@@ -79,13 +97,21 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
     
     double estimate = 0.0;
     
+    int filtered_sample_size = 0;
     for(int i=0; i<m; i++) {
         tdd t = sample[i];
-        double p_t = h1(get<0>(t), get<1>(t))*h2(get<2>(t))/normalisation;
-        estimate += aggregation_f(get<0>(t), get<1>(t), get<2>(t))/p_t;
+        double p_t = h1(get<0>(t), get<1>(t))*h2(get<2>(t));
+        if(R1_filter(get<0>(t), get<1>(t)) && R2_filter(get<0>(t), get<2>(t))) {
+            estimate += aggregation_f(get<0>(t), get<1>(t), get<2>(t))/p_t;
+            filtered_sample_size++;
+        }
     }
     
-    estimate /= (double) m;
+    if(filtered_estimator) {
+        estimate *= filtered_normalisation/(double) filtered_sample_size;
+    } else {
+        estimate *= normalisation/(double) m;
+    }
     return estimate;
 }
 
@@ -99,7 +125,7 @@ int main() {
     double sigma = 0.99;
     double sigma_factor = 1.0/log(1/sigma);
 
-    int n1          = 100000;
+    int n1          = 10000;
     double skew1    = 1.0;
     double ratio1   = 20.0;
     int n_discrete1 = 10.0;
@@ -143,12 +169,18 @@ int main() {
                                 }
                                 return weighted_sample(U, get_cdf(U_w), m);
                             };
+
+    auto no_filter = [] (double X, double Y) -> bool {return true;};
+    auto range_filter = [] (double X, double Y) -> bool {return Y > 1.5e-3;};
+
+    auto R1_filter = no_filter;
+    auto R2_filter = range_filter;
  
     auto J = join(stratR1, stratR2);
-    double true_aggregate = 0.0;
+    double true_full_aggregate = 0.0;
     for(auto j : J)
-        true_aggregate += aggregate_f(get<0>(j), get<1>(j), get<2>(j));
-    cout << "true  :" << true_aggregate << endl;
+        true_full_aggregate += aggregate_f(get<0>(j), get<1>(j), get<2>(j));
+    cout << "true       :" << true_full_aggregate << endl;
 
     
     //Compute the sampling weights required for SSJ
@@ -167,37 +199,57 @@ int main() {
     function<vector<int>(int, vector<double>)> samplers[] = 
                         { exact_sampler, heuristic_sampler, exact_sampler, heuristic_sampler, exact_sampler};
     
+    set<int> filter_methods_used = {0,1,2};
+    string filter_types[] = {"full      ","filtered  ","fltr.naive"};
+    function<bool(double,double)> R1_filters[] = {no_filter, R1_filter, R1_filter};
+    function<bool(double,double)> R2_filters[] = {no_filter, R2_filter, R2_filter};
+    bool filtered_estimations[] = {false, true, false};
+
+    vector<double> true_aggregates(3, 0.0);
+    for(int i_f : filter_methods_used) {
+        for(auto j : J)
+            if(R1_filters[i_f](get<0>(j), get<1>(j)) && R2_filters[i_f](get<0>(j), get<2>(j)))
+                true_aggregates[i_f] += aggregate_f(get<0>(j), get<1>(j), get<2>(j));
+        cout << "Exact aggregation (" << filter_types[i_f] << ") :" << true_aggregates[i_f] << endl;
+    }
+     
     int nruns = 100;
     
-    vector< vector<double> > relative_errors(5, vector<double>(nruns, 0));
+    vector< vector<double> > relative_errors(sampling_methods_used.size() * filter_methods_used.size(), vector<double>(nruns, 0));
     
     int k = k_factor * m*m * sigma_factor
             * (*max_element(SSJ_prob.begin(), SSJ_prob.end()))
             / (*min_element(SSJ_prob.begin(), SSJ_prob.end()));//HWS-heuristic
-    cout << "k  :" << k << " (should be smaller than " << R1.size() << ")"<< endl;
+    cout << "k          :" << k << " (should be smaller than " << R1.size() << ")"<< endl;
     if(k > R1.size()) {
         cout << "WARNING: Skipping Heuristic methods!" << endl;
         sampling_methods_used.erase(1);
         sampling_methods_used.erase(3);
     }
-        
 
     
     for(int run_i=0; run_i<nruns; run_i++) {
         if(round(10*run_i/(double)nruns) > round(10*(run_i-1)/(double)nruns)) {
             cout << round(100*run_i/(double)nruns) << "% done.." << endl;
         }
-        for(int i : sampling_methods_used) {
-            double estimate = generic_sample_join(h1_functions[i], h2_functions[i], 
-                                                    m, R1, R2, samplers[i], aggregate_f);
-            relative_errors[i][run_i] = abs(true_aggregate-estimate)/true_aggregate;
-            //cout << sample_types[i] << ": " << round(estimate*1000)/1000.0 << endl;
-            //cout << "\t" << abs(true_aggregate-estimate)/true_aggregate*100 << "% relative-error" << endl;
+        for(int i = 0; i<sampling_methods_used.size() * filter_methods_used.size(); i++) {
+            int i_s = i%sampling_methods_used.size();//sampling method index
+            int i_f = i/sampling_methods_used.size();//filter method index
+            if(sampling_methods_used.find(i_s) == sampling_methods_used.end())
+                continue;
+            double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
+                                                  m, R1, R2, samplers[i_s], aggregate_f, 
+                                                  R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f]);
+            relative_errors[i][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
         }
     }
 
-    for(int i : sampling_methods_used) {
-        cout << sample_types[i] << ":" << endl;
+    for(int i = 0; i<sampling_methods_used.size() * filter_methods_used.size(); i++) {
+        int i_s = i%sampling_methods_used.size();//sampling method index
+        int i_f = i/sampling_methods_used.size();//filter method index
+        if(sampling_methods_used.find(i_s) == sampling_methods_used.end())
+            continue;
+        cout << sample_types[i_s] << "(" << filter_types[i_f] << ") :" << endl;
         show_sigma_levels(relative_errors[i]);
     }
     
