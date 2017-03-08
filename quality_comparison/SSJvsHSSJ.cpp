@@ -49,9 +49,10 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
                                 function<vector<int>(int, vector<double>)> range_sampler,
                                             //sample(sample_size, weights)
                                 function<double(double, double, double)> aggregation_f,
-                                function<bool(double, double)> R1_filter,//predicate; true => selected
+                                function<bool(double, double)> R1_filter,//Ri_filter are predicates; true => selected
                                 function<bool(double, double)> R2_filter, bool filtered_estimator) {
 
+    //Compute (filtered) stratum weights and cdfs
     Tstrat R2_stratified = stratify(R2);
     map<double, double> R2_stratum_weights;
     map<double, double> R2_filtered_stratum_weights;
@@ -72,10 +73,12 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
         R2_filtered_stratum_weights[key] = norm;
         R2_stratum_cdfs[key] = get_cdf(stratum_weights);
     }
-    double normalisation = 0.0;
-    double filtered_normalisation = 0.0;
-    vector<double> R1_sample_weights(R1.size());
-    vector<double> R1_filtered_sample_weights(R1.size(), 0.0);
+
+    //Compute normalisation factors
+    double normalisation = 0.0;          //Total weight of all elements in J
+    double filtered_normalisation = 0.0; //Total weight of selection sigma(J)
+    vector<double> R1_sample_weights(R1.size());                //Sampling weights in R1
+    vector<double> R1_filtered_sample_weights(R1.size(), 0.0);  //Filtered sampling weights
     for(int i=0; i<R1.size(); i++) {
         pdd t1 = R1[i];
         R1_sample_weights[i] = h1(t1.first, t1.second) * R2_stratum_weights[t1.first];
@@ -177,11 +180,6 @@ int main() {
     auto R2_filter = range_filter;
  
     auto J = join(stratR1, stratR2);
-    double true_full_aggregate = 0.0;
-    for(auto j : J)
-        true_full_aggregate += aggregate_f(get<0>(j), get<1>(j), get<2>(j));
-    cout << "true       :" << true_full_aggregate << endl;
-
     
     //Compute the sampling weights required for SSJ
     vector<double> SSJ_prob(n1);
@@ -206,11 +204,16 @@ int main() {
     bool filtered_estimations[] = {false, true, false};
 
     vector<double> true_aggregates(3, 0.0);
+    vector<double> selectivities(3, 0.0);
     for(int i_f : filter_methods_used) {
         for(auto j : J)
-            if(R1_filters[i_f](get<0>(j), get<1>(j)) && R2_filters[i_f](get<0>(j), get<2>(j)))
+            if(R1_filters[i_f](get<0>(j), get<1>(j)) && R2_filters[i_f](get<0>(j), get<2>(j))) {
                 true_aggregates[i_f] += aggregate_f(get<0>(j), get<1>(j), get<2>(j));
-        cout << "Exact aggregation (" << filter_types[i_f] << ") :" << true_aggregates[i_f] << endl;
+                selectivities[i_f] ++;
+            }
+
+        selectivities[i_f] /= (double) J.size();
+        cout << "Exact aggregation (" << filter_types[i_f] << ") :" << true_aggregates[i_f] << " (selectivity " << selectivities[i_f]*100 << "%)" << endl;
     }
      
     int nruns = 100;
@@ -240,16 +243,15 @@ int main() {
         for(int i_s : sampling_methods_used)
         for(int i_f : filter_methods_used) {
             double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
-                                                  m, R1, R2, samplers[i_s], aggregate_f, 
+                                                  round(m/selectivities[i_f]), R1, R2, samplers[i_s], aggregate_f, 
                                                   R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f]);
             relative_errors[make_pair(i_s, i_f)][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
         }
     }
-
     
     for(int i_f : filter_methods_used)
     for(int i_s : sampling_methods_used) {
-        cout << sample_types[i_s] << "(" << filter_types[i_f] << ") :" << endl;
+        cout << sample_types[i_s] << "(" << filter_types[i_f] << ", sample size " << round(m/selectivities[i_f]) << "):" << endl;
         show_sigma_levels(relative_errors[make_pair(i_s, i_f)]);
     }
     
