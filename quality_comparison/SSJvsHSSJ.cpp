@@ -247,8 +247,8 @@ int main() {
     }
 
     
-    for(int i_s : sampling_methods_used)
-    for(int i_f : filter_methods_used) {
+    for(int i_f : filter_methods_used)
+    for(int i_s : sampling_methods_used) {
         cout << sample_types[i_s] << "(" << filter_types[i_f] << ") :" << endl;
         show_sigma_levels(relative_errors[make_pair(i_s, i_f)]);
     }
