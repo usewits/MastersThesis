@@ -70,7 +70,7 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
                 filtered_norm += stratum_weights[i]; 
         }
         R2_stratum_weights[key] = norm;
-        R2_filtered_stratum_weights[key] = norm;
+        R2_filtered_stratum_weights[key] = filtered_norm;
         R2_stratum_cdfs[key] = get_cdf(stratum_weights);
     }
 
