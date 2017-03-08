@@ -215,7 +215,12 @@ int main() {
      
     int nruns = 100;
     
-    vector< vector<double> > relative_errors(sampling_methods_used.size() * filter_methods_used.size(), vector<double>(nruns, 0));
+    map< pair<int, int>, vector<double> > relative_errors;
+    
+    for(int i_s : sampling_methods_used)
+    for(int i_f : filter_methods_used) {
+        relative_errors[make_pair(i_s, i_f)] = vector<double>(nruns, 0);
+    }
     
     int k = k_factor * m*m * sigma_factor
             * (*max_element(SSJ_prob.begin(), SSJ_prob.end()))
@@ -232,25 +237,20 @@ int main() {
         if(round(10*run_i/(double)nruns) > round(10*(run_i-1)/(double)nruns)) {
             cout << round(100*run_i/(double)nruns) << "% done.." << endl;
         }
-        for(int i = 0; i<sampling_methods_used.size() * filter_methods_used.size(); i++) {
-            int i_s = i%sampling_methods_used.size();//sampling method index
-            int i_f = i/sampling_methods_used.size();//filter method index
-            if(sampling_methods_used.find(i_s) == sampling_methods_used.end())
-                continue;
+        for(int i_s : sampling_methods_used)
+        for(int i_f : filter_methods_used) {
             double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
                                                   m, R1, R2, samplers[i_s], aggregate_f, 
                                                   R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f]);
-            relative_errors[i][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
+            relative_errors[make_pair(i_s, i_f)][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
         }
     }
 
-    for(int i = 0; i<sampling_methods_used.size() * filter_methods_used.size(); i++) {
-        int i_s = i%sampling_methods_used.size();//sampling method index
-        int i_f = i/sampling_methods_used.size();//filter method index
-        if(sampling_methods_used.find(i_s) == sampling_methods_used.end())
-            continue;
+    
+    for(int i_s : sampling_methods_used)
+    for(int i_f : filter_methods_used) {
         cout << sample_types[i_s] << "(" << filter_types[i_f] << ") :" << endl;
-        show_sigma_levels(relative_errors[i]);
+        show_sigma_levels(relative_errors[make_pair(i_s, i_f)]);
     }
     
     return 0;
