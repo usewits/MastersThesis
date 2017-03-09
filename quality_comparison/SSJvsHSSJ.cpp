@@ -64,7 +64,9 @@ double HWS_heuristic_complete(const vector<double>& w, double w_ratio, double si
 
 //Generic function to estimate aggregates over joins
 //It can be used to obtain SSJ, HSSJ, WS-Join, HWS-Join or US-Join estimates (both filtered and unfiltered)
-//Runs in O(n1+n2) time and O(n1) = ~3*n1*(2*64) bits of memory (not as fast as possible, in favour of shorter code)
+//Runs in O(n1+n2) time if recompute_normalisation is set to true, and O(k+n2) time otherwise (not as fast as possible, in favour of shorter code)
+//recompute_normalisation should be set to true whenever any of the following variables have changed: h1, h2, R1, R2, R1_filter, R2_filter
+//Uses O(n1) = ~3*n1*(2*64) bits of memory
 //Output probability is h1*h2
 double generic_sample_join(function<double(double,double)> h1, function<double(double)> h2, int m,
                                 const vector<pdd>& R1, const vector<pdd>& R2,
@@ -73,7 +75,8 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
                                 function<double(double, double, double)> aggregation_f,
                                 function<bool(double, double)> R1_filter,//Ri_filter are predicates; true => selected
                                 function<bool(double, double)> R2_filter,
-                                bool filtered_estimator, double filter_selectivity) {
+                                bool filtered_estimator, double filter_selectivity,
+                                bool recompute_normalisation = true) {
 
     //Compute (filtered) stratum weights and cdfs (O(n2) time, O(n2) memory)
     Tstrat R2_stratified = stratify(R2);//O(n2) memory
@@ -97,20 +100,27 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
         R2_stratum_cdfs[key] = get_cdf(stratum_weights);
     }
 
-    //Compute normalisation factors (O(n1) time, 2*n1 memory)
-    //These depend on: h1, h2, R1_filter, R2_filter, R1, R2 (and none of the other arguments)
-    double normalisation = 0.0;          //Total weight of all elements in J
-    double filtered_normalisation = 0.0; //Total weight of selection sigma(J)
-    vector<double> R1_sample_weights(R1.size());                //Sampling weights in R1 (n1 memory)
-    vector<double> R1_filtered_sample_weights(R1.size(), 0.0);  //Filtered sampling weights (n1 memory)
     
-    for(int i=0; i<R1.size(); i++) {//O(n1) time
-        pdd t1 = R1[i];
-        R1_sample_weights[i] = h1(t1.first, t1.second) * R2_stratum_weights[t1.first];
-        normalisation += R1_sample_weights[i];
-        if(R1_filter(t1.first, t1.second)) {
-            R1_filtered_sample_weights[i] = h1(t1.first, t1.second) * R2_filtered_stratum_weights[t1.first];
-            filtered_normalisation += R1_filtered_sample_weights[i];
+    static double normalisation = 0.0;          //Total weight of all elements in J
+    static double filtered_normalisation = 0.0; //Total weight of selection sigma(J)
+    static vector<double> R1_sample_weights(R1.size());                //Sampling weights in R1 (n1 memory)
+    static vector<double> R1_filtered_sample_weights(R1.size(), 0.0);  //Filtered sampling weights (n1 memory)
+    if(recompute_normalisation) {
+        //Compute normalisation factors (O(n1) time, 2*n1 memory)
+        //These depend on: h1, h2, R1_filter, R2_filter, R1, R2 (and none of the other arguments)
+        normalisation = 0.0;
+        filtered_normalisation = 0.0;
+        R1_sample_weights = vector<double>(R1.size());
+        R1_filtered_sample_weights = vector<double>(R1.size(), 0.0);
+        
+        for(int i=0; i<R1.size(); i++) {//O(n1) time
+            pdd t1 = R1[i];
+            R1_sample_weights[i] = h1(t1.first, t1.second) * R2_stratum_weights[t1.first];
+            normalisation += R1_sample_weights[i];
+            if(R1_filter(t1.first, t1.second)) {
+                R1_filtered_sample_weights[i] = h1(t1.first, t1.second) * R2_filtered_stratum_weights[t1.first];
+                filtered_normalisation += R1_filtered_sample_weights[i];
+            }
         }
     }
     
@@ -304,37 +314,36 @@ int main() {
         
     //Run experiments for each setting nruns times
     cout << "Running " << nruns << "*" << relative_errors.size() << " experiments..." << endl;
-    int progress_width = 50;
-    for(int run_i=0; run_i<nruns; run_i++) {
-        if(floor(progress_width*(run_i+1)/(double)nruns) > floor(progress_width*(run_i)/(double)nruns)) {
-            int n_bars = round(progress_width*run_i/(double)nruns);//out of 100
-            cout << " [";
-            for(int progress = 0; progress < progress_width; progress++) {
-                if(progress < n_bars)
-                    cout << "#";
-                else
-                    cout << " ";
-            }
-            if(progress_width == n_bars)
-                cout << "] DONE! " << endl;
-            else
-                cout << "] " << round(100*run_i/(double)nruns) << "%\r" << flush;
-        }
-        for(int i_s : sampling_methods_used)
-        for(int i_f : filter_methods_used) {
-            double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
-                                                  m, R1, R2, samplers[i_s], aggregate_f, 
-                                                  R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f], selectivities[i_f]);
-            relative_errors[make_pair(i_s, i_f)][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
-        }
-    }
     
-    //Print the results (CI intervals)
+    
     for(int i_f : filter_methods_used)
     for(int i_s : sampling_methods_used) {
+        int progress_width = 50;
+        for(int run_i=0; run_i<nruns; run_i++) {
+            if(floor(progress_width*(run_i+1)/(double)nruns) > floor(progress_width*(run_i)/(double)nruns)) {
+                int n_bars = round(progress_width*run_i/(double)nruns);//out of 100
+                cout << " [";
+                for(int progress = 0; progress < progress_width; progress++) {
+                    if(progress < n_bars)
+                        cout << "#";
+                    else
+                        cout << " ";
+                }
+                if(progress_width == n_bars)
+                    cout << "] DONE! " << endl;
+                else
+                    cout << "] " << round(100*run_i/(double)nruns) << "%\r" << flush;
+            }
+                double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
+                                                      m, R1, R2, samplers[i_s], aggregate_f, 
+                                                      R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f], selectivities[i_f]);
+                relative_errors[make_pair(i_s, i_f)][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
+        }
+
+        //Print the results (CI intervals)
         cout << sample_types[i_s] << "(" << filter_types[i_f] << "):" << endl;
         show_sigma_levels(relative_errors[make_pair(i_s, i_f)]);
     }
-    
+
     return 0;
 }
