@@ -253,7 +253,7 @@ int main() {
 
 
     //A list of filter methods and their names
-    set<int> filter_methods_used = {0,1,2};
+    set<int> filter_methods_used = {0};
     string filter_types[] = {"full      ","filtered  ","fltr.naive"};
     function<bool(double,double)> R1_filters[] = {no_filter, R1_filter, R1_filter};
     function<bool(double,double)> R2_filters[] = {no_filter, R2_filter, R2_filter};
@@ -276,7 +276,7 @@ int main() {
      
     //THE EXPERIMENTS
 
-    int nruns = 1000;
+    int nruns = 10000;
     map< pair<int, int>, vector<double> > relative_errors;
     
     //Initialize the relative_errors object
@@ -287,9 +287,22 @@ int main() {
     
         
     //Run experiments for each setting nruns times
+    cout << "Running " << nruns << "*" << relative_errors.size() << " experiments..." << endl;
+    int progress_width = 50;
     for(int run_i=0; run_i<nruns; run_i++) {
-        if(round(10*run_i/(double)nruns) > round(10*(run_i-1)/(double)nruns)) {
-            cout << round(100*run_i/(double)nruns) << "% done.." << endl;
+        if(floor(progress_width*(run_i+1)/(double)nruns) > floor(progress_width*(run_i)/(double)nruns)) {
+            int n_bars = round(progress_width*run_i/(double)nruns);//out of 100
+            cout << " [";
+            for(int progress = 0; progress < progress_width; progress++) {
+                if(progress < n_bars)
+                    cout << "#";
+                else
+                    cout << " ";
+            }
+            if(progress_width == n_bars)
+                cout << "] DONE! " << endl;
+            else
+                cout << "] " << round(100*run_i/(double)nruns) << "%\r" << flush;
         }
         for(int i_s : sampling_methods_used)
         for(int i_f : filter_methods_used) {
