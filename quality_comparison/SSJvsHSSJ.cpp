@@ -315,7 +315,6 @@ int main() {
     //Run experiments for each setting nruns times
     cout << "Running " << nruns << "*" << relative_errors.size() << " experiments..." << endl;
     
-    
     for(int i_f : filter_methods_used)
     for(int i_s : sampling_methods_used) {
         int progress_width = 50;
@@ -334,10 +333,12 @@ int main() {
                 else
                     cout << "] " << round(100*run_i/(double)nruns) << "%\r" << flush;
             }
-                double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
-                                                      m, R1, R2, samplers[i_s], aggregate_f, 
-                                                      R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f], selectivities[i_f]);
-                relative_errors[make_pair(i_s, i_f)][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
+            bool recompute_normalisation = (run_i == 0);
+            double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
+                                                  m, R1, R2, samplers[i_s], aggregate_f, 
+                                                  R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f],
+                                                  selectivities[i_f], recompute_normalisation);
+            relative_errors[make_pair(i_s, i_f)][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
         }
 
         //Print the results (CI intervals)
