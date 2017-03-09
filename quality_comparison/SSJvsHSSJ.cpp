@@ -215,7 +215,7 @@ int main() {
     double sigma_factor = 1.0/log(1/sigma);
 
     // Generate R1
-    int n1          = 200*MILLION;
+    int n1          = 2*MILLION;
     double skew1    = 1.0;
     double ratio1   = 20.0;
     int n_discrete1 = 10.0;
@@ -298,18 +298,7 @@ int main() {
     bool                            is_heuristic[] = {   false,      true,        false,       true,   false};
     function<vector<int>(int, const vector<double>&, vector<double>*)> samplers[] = 
                         { exact_sampler, heuristic_sampler, exact_sampler, heuristic_sampler, exact_sampler};
-    
-    //Remove HWS-based methods if HWS causes oversampling 
-    double k_dbl = HWS_heuristic(SSJ_prob, sigma, k_factor, m);
-    cout << "k = " << k_dbl << " (should be smaller than " << R1.size() << " for AWS)"<< endl;
-    if(k_dbl > R1.size()) {
-        cout << "WARNING: Skipping Heuristic methods!" << endl;
-        sampling_methods_used.erase(1);
-        sampling_methods_used.erase(3);
-    }
-    int k = round(k_dbl);
-
-
+   
     //A list of filter methods and their names
     set<int> filter_methods_used = {0,1,2};
     string filter_types[] = {"full      ","filtered  ","fltr.naive"};
@@ -320,9 +309,10 @@ int main() {
     //Compute and print the true aggregate values for each filter mode (actually the same for filtered and fltr.naive)
 
     vector<double> true_aggregates(3, 0.0);
+    vector<long long> filtered_join_size(3, 0);
     vector<double> selectivities(3, 0.0);
 
-    int full_join_size = 0;
+    long long full_join_size = 0;
     for(auto strat1 : stratR1) {
         double a = strat1.first;
         auto strat2it = stratR2.find(a);
@@ -340,14 +330,15 @@ int main() {
             for(int i_f : filter_methods_used) {
                 if(R1_filters[i_f](tA, tB) && R2_filters[i_f](tA, tC)) {
                     true_aggregates[i_f] += aggregate_f(tA, tB, tC);
-                    selectivities[i_f] ++;
+                    filtered_join_size[i_f] ++;
                 }
             }
         }
     }
+    cout << "Join size: " << full_join_size << endl;
 
     for(int i_f : filter_methods_used) {
-        selectivities[i_f] /= (double) full_join_size;
+        selectivities[i_f] = filtered_join_size[i_f]/(double) full_join_size;
         cout << "Exact aggregation (" << filter_types[i_f] << ") :" << true_aggregates[i_f] << " (selectivity " << selectivities[i_f]*100 << "% -> sample size ~ "<< round(m/selectivities[i_f])<< ")" << endl;
     }
     
@@ -355,50 +346,77 @@ int main() {
     //THE EXPERIMENTS
 
     int nruns = 1000;
-    map< pair<int, int>, vector<double> > relative_errors;
-    
-    //Initialize the relative_errors object
-    for(int i_s : sampling_methods_used)
-    for(int i_f : filter_methods_used) {
-        relative_errors[make_pair(i_s, i_f)] = vector<double>(nruns, 0);
-    }
-    
+    while(true) {
+        cout << "Sample size? m = " << flush;
+        cin >> m;
+        cout << "Runs? nruns = " << flush;
+        cin >> nruns;
+        //Couls also set HWS mode..
         
-    //Run experiments for each setting nruns times
-    cout << "Running " << nruns << "*" << relative_errors.size() << " experiments..." << endl;
-    
-    for(int i_f : filter_methods_used)
-    for(int i_s : sampling_methods_used) {
-        int progress_width = 50;
-        for(int run_i=0; run_i<nruns; run_i++) {
-            if(floor(progress_width*(run_i+1)/(double)nruns) > floor(progress_width*(run_i)/(double)nruns)) {
-                int n_bars = round(progress_width*run_i/(double)nruns);//out of 100
-                cout << " [";
-                for(int progress = 0; progress < progress_width; progress++) {
-                    if(progress < n_bars)
-                        cout << "#";
-                    else
-                        cout << " ";
-                }
-                if(progress_width == n_bars)
-                    cout << "] DONE! " << endl;
-                else
-                    cout << "] " << round(100*run_i/(double)nruns) << "%\r" << flush;
-            }
-            bool recompute_normalisation = (run_i == 0);
-            bool recompute_cdf = recompute_normalisation && !is_heuristic[i_s];
-                //Make generic_sample_join memoise normalisation only if it is not a heuristic sample join
-                //since heuristic sample joins do not require the full cdf
-            double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
-                                                  m, R1, R2, samplers[i_s], aggregate_f, 
-                                                  R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f],
-                                                  selectivities[i_f], recompute_normalisation, recompute_cdf);
-            relative_errors[make_pair(i_s, i_f)][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
+        map< pair<int, int>, vector<double> > relative_errors;
+        
+        //Initialize the relative_errors object
+        for(int i_s : sampling_methods_used)
+        for(int i_f : filter_methods_used) {
+            relative_errors[make_pair(i_s, i_f)] = vector<double>(nruns, 0);
+        }
+ 
+        cout << "Running " << nruns << "*" << relative_errors.size() << " experiments..." << endl;
+ 
+        //Remove HWS-based methods if HWS causes oversampling 
+        double k_dbl = HWS_heuristic(SSJ_prob, sigma, k_factor, m);
+        cout << "k = " << k_dbl << " (should be smaller than " << R1.size() << " for AWS)"<< endl;
+        if(k_dbl > R1.size()) {
+            cout << "WARNING: Skipping Heuristic methods!" << endl;
+            sampling_methods_used.erase(1);
+            sampling_methods_used.erase(3);
+        } else {
+            sampling_methods_used.insert(1);
+            sampling_methods_used.insert(3);
         }
 
-        //Print the results (CI intervals)
-        cout << sample_types[i_s] << "(" << filter_types[i_f] << "):" << endl;
-        show_sigma_levels(relative_errors[make_pair(i_s, i_f)]);
+        
+        char confirm = 'n';
+        cout << "Are you sure? (y/n) " << flush;
+        cin >> confirm;
+        if(confirm != 'y')
+            continue;
+            
+        //Run experiments for each setting nruns times
+        
+        for(int i_f : filter_methods_used)
+        for(int i_s : sampling_methods_used) {
+            int progress_width = 50;
+            for(int run_i=0; run_i<nruns; run_i++) {
+                if(floor(progress_width*(run_i+1)/(double)nruns) > floor(progress_width*(run_i)/(double)nruns)) {
+                    int n_bars = round(progress_width*run_i/(double)nruns);//out of 100
+                    cout << " [";
+                    for(int progress = 0; progress < progress_width; progress++) {
+                        if(progress < n_bars)
+                            cout << "#";
+                        else
+                            cout << " ";
+                    }
+                    if(progress_width == n_bars)
+                        cout << "] DONE! " << endl;
+                    else
+                        cout << "] " << round(100*run_i/(double)nruns) << "%\r" << flush;
+                }
+                bool recompute_normalisation = (run_i == 0);
+                bool recompute_cdf = recompute_normalisation && !is_heuristic[i_s];
+                    //Make generic_sample_join memoise normalisation only if it is not a heuristic sample join
+                    //since heuristic sample joins do not require the full cdf
+                double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
+                                                      m, R1, R2, samplers[i_s], aggregate_f, 
+                                                      R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f],
+                                                      selectivities[i_f], recompute_normalisation, recompute_cdf);
+                relative_errors[make_pair(i_s, i_f)][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
+            }
+
+            //Print the results (CI intervals)
+            cout << sample_types[i_s] << "(" << filter_types[i_f] << "):" << endl;
+            show_sigma_levels(relative_errors[make_pair(i_s, i_f)]);
+        }
     }
 
     return 0;
