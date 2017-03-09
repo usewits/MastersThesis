@@ -59,7 +59,7 @@ double HWS_heuristic_complete(double w_ratio, double sigma, double k_factor, int
 
 //Generic function to estimate aggregates over joins
 //It can be used to obtain SSJ, HSSJ, WS-Join, HWS-Join or US-Join estimates (both filtered and unfiltered)
-//Runs in O(n_1 log n_1+n_2 log n_2) (not as fast as possible, in favour of shorter code)
+//Runs in O(n1+n2) time and O(n1) = ~3*n1*(2*64) bits of memory (not as fast as possible, in favour of shorter code)
 //Output probability is h1*h2
 double generic_sample_join(function<double(double,double)> h1, function<double(double)> h2, int m,
                                 const vector<pdd>& R1, const vector<pdd>& R2,
@@ -70,12 +70,12 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
                                 function<bool(double, double)> R2_filter,
                                 bool filtered_estimator, double filter_selectivity) {
 
-    //Compute (filtered) stratum weights and cdfs
-    Tstrat R2_stratified = stratify(R2);
+    //Compute (filtered) stratum weights and cdfs (O(n2) time, O(n2) memory)
+    Tstrat R2_stratified = stratify(R2);//O(n2) memory
     map<double, double> R2_stratum_weights;
     map<double, double> R2_filtered_stratum_weights;
-    map<double, vector<double> > R2_stratum_cdfs;
-    for(auto stratum : R2_stratified) {
+    map<double, vector<double> > R2_stratum_cdfs;//O(n2) memory
+    for(auto stratum : R2_stratified) {//O(n2) time
         double key = stratum.first;
         double norm = 0.0;
         double filtered_norm = 0.0;
@@ -92,12 +92,12 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
         R2_stratum_cdfs[key] = get_cdf(stratum_weights);
     }
 
-    //Compute normalisation factors
+    //Compute normalisation factors (O(n1) time, 2*n1 memory)
     double normalisation = 0.0;          //Total weight of all elements in J
     double filtered_normalisation = 0.0; //Total weight of selection sigma(J)
-    vector<double> R1_sample_weights(R1.size());                //Sampling weights in R1
-    vector<double> R1_filtered_sample_weights(R1.size(), 0.0);  //Filtered sampling weights
-    for(int i=0; i<R1.size(); i++) {
+    vector<double> R1_sample_weights(R1.size());                //Sampling weights in R1 (n1 memory)
+    vector<double> R1_filtered_sample_weights(R1.size(), 0.0);  //Filtered sampling weights (n1 memory)
+    for(int i=0; i<R1.size(); i++) {//O(n1) time
         pdd t1 = R1[i];
         R1_sample_weights[i] = h1(t1.first, t1.second) * R2_stratum_weights[t1.first];
         normalisation += R1_sample_weights[i];
@@ -107,22 +107,22 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
         }
     }
     
-    //Construct sample
+    //Construct sample (O(n1+k+m') time, O(k) memory)
     double over_sampling_factor = 1.2;
     int over_sampling_constant = 100;
-    int S_size = over_sampling_constant+ceil(over_sampling_factor*m/filter_selectivity);
-    vector<int> S_indices = range_sampler(S_size, R1_sample_weights);
+    int S_size = round(over_sampling_constant+ceil(over_sampling_factor*m/filter_selectivity));
+    vector<int> S_indices = range_sampler(S_size, R1_sample_weights);//O(n1+k) time, O(k) memory
     vector<pdd> S(S_size);
     vector<double> S_weights(S_size);
-    for(int i=0; i<S_size; i++) {
+    for(int i=0; i<S_size; i++) {//O(m'=m/selectivity)=O(S_size) time
         S[i] = R1[S_indices[i]];
         S_weights[i] = R1_sample_weights[S_indices[i]];
     }
-    vector<tdd> sample = minijoin(S, R2_stratified);
+    vector<tdd> sample = minijoin(S, R2_stratified);//O(m') time and memory
     
     int filtered_sample_size = 0;
 
-    for(auto t : sample) {
+    for(auto t : sample) {//O(m') time
         double tA, tB, tC;
         getValues(tA, tB, tC, t);
         if(R1_filter(tA, tB) && R2_filter(tA, tC)) {
@@ -130,7 +130,7 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
         }
     }
 
-    //Reduce sample size until the filtered_sample_size equals m
+    //Reduce sample size until the filtered_sample_size equals m (O(m') time)
     assert(filtered_sample_size >= m);//If this is not the case, S_size is too small
     while(filtered_sample_size > m) {
         double tA, tB, tC;
@@ -141,9 +141,9 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
         sample.pop_back();
     }
     
-    //Compute estimate
+    //Compute estimate (O(m') time)
     double estimate = 0.0;
-    for(auto t : sample) {
+    for(auto t : sample) {//O(m') time
         double tA, tB, tC;
         getValues(tA, tB, tC, t);
         double w_t = h1(tA, tB)*h2(tC);//non normalised weights
@@ -208,17 +208,17 @@ int main() {
                                 return weighted_sample_indices(w.size(), get_cdf(w), m);
                             };
     auto heuristic_sampler = [&sigma,&k_factor,&HWS_heuristic] (int m, vector<double> w) -> vector<int> {
-                                double w_max = (*max_element(w.begin(), w.end()));
+                                double w_max = (*max_element(w.begin(), w.end()));//O(|w|) time
                                 double w_min = (*min_element(w.begin(), w.end()));
 
                                 int k = round(HWS_heuristic(w_max/w_min, sigma, k_factor, m));
     
-                                vector<int> U = sample_indices(w.size(), k);
+                                vector<int> U = sample_indices(w.size(), k);//O(k) time
                                 vector<double> U_w(k);
-                                for(int i=0; i<k; i++) {
+                                for(int i=0; i<k; i++) {//O(k) time
                                     U_w[i] = w[U[i]];
                                 }
-                                return weighted_sample(U, get_cdf(U_w), m);
+                                return weighted_sample(U, get_cdf(U_w), m);//O(k) time
                             };
 
     //Selection filters: tuples that produce a true are selected
