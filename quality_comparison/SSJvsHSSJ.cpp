@@ -47,6 +47,16 @@ void getValues(double& a, double& b, double& c, const tdd& t) {
 }
 
 
+double HWS_heuristic_simple(double w_ratio, double sigma, double k_factor, int m) {
+    return m*m;
+}
+
+double HWS_heuristic_complete(double w_ratio, double sigma, double k_factor, int m) {
+    double sigma_factor = 1.0/log(1.0/sigma);
+    return k_factor*sigma_factor* m*m * w_ratio;
+}
+
+
 //Generic function to estimate aggregates over joins
 //It can be used to obtain SSJ, HSSJ, WS-Join, HWS-Join or US-Join estimates (both filtered and unfiltered)
 //Runs in O(n_1 log n_1+n_2 log n_2) (not as fast as possible, in favour of shorter code)
@@ -192,16 +202,16 @@ int main() {
     auto h2_unif = [] (double C) -> double {return 1.0;};
     auto h2_weighted = [] (double C) -> double {return C;};
 
+    auto HWS_heuristic = *HWS_heuristic_simple;
+
     auto exact_sampler = [] (int m, vector<double> w) -> vector<int> {
                                 return weighted_sample_indices(w.size(), get_cdf(w), m);
                             };
-    auto heuristic_sampler = [&sigma,&k_factor] (int m, vector<double> w) -> vector<int> {
+    auto heuristic_sampler = [&sigma,&k_factor,&HWS_heuristic] (int m, vector<double> w) -> vector<int> {
                                 double w_max = (*max_element(w.begin(), w.end()));
                                 double w_min = (*min_element(w.begin(), w.end()));
-                                double sigma_factor = 1.0/log(1.0/sigma);
 
-                                //HWS-heuristic
-                                int k = k_factor*sigma_factor* m*m * w_max/w_min;
+                                int k = round(HWS_heuristic(w_max/w_min, sigma, k_factor, m));
     
                                 vector<int> U = sample_indices(w.size(), k);
                                 vector<double> U_w(k);
@@ -214,9 +224,10 @@ int main() {
     //Selection filters: tuples that produce a true are selected
     auto no_filter = [] (double X, double Y) -> bool {return true;};
     auto range_filter = [] (double X, double Y) -> bool {return Y > 1.5e-3;};
+    auto rand_filter = [] (double X, double Y) -> bool {int* Z; Z=(int*)&Y; return (*Z)%2;};
 
     auto R1_filter = no_filter;
-    auto R2_filter = range_filter;
+    auto R2_filter = rand_filter;
  
     auto J = join(stratR1, stratR2);
     
@@ -239,10 +250,9 @@ int main() {
                         { exact_sampler, heuristic_sampler, exact_sampler, heuristic_sampler, exact_sampler};
     
     //Remove HWS-based methods if HWS causes oversampling 
-    double k_dbl = k_factor * m*m * sigma_factor
-            * (*max_element(SSJ_prob.begin(), SSJ_prob.end()))
-            / (*min_element(SSJ_prob.begin(), SSJ_prob.end()));//HWS-heuristic (double to avoid overflow)
-    cout << "k          :" << k_dbl << " (should be smaller than " << R1.size() << ")"<< endl;
+    double k_dbl = HWS_heuristic((*max_element(SSJ_prob.begin(), SSJ_prob.end()))/(*min_element(SSJ_prob.begin(), SSJ_prob.end())),
+                                     sigma, k_factor, m);
+    cout << "k = " << k_dbl << " (should be smaller than " << R1.size() << " for AWS)"<< endl;
     if(k_dbl > R1.size()) {
         cout << "WARNING: Skipping Heuristic methods!" << endl;
         sampling_methods_used.erase(1);
@@ -253,7 +263,7 @@ int main() {
 
 
     //A list of filter methods and their names
-    set<int> filter_methods_used = {0};
+    set<int> filter_methods_used = {0,1,2};
     string filter_types[] = {"full      ","filtered  ","fltr.naive"};
     function<bool(double,double)> R1_filters[] = {no_filter, R1_filter, R1_filter};
     function<bool(double,double)> R2_filters[] = {no_filter, R2_filter, R2_filter};
@@ -276,7 +286,7 @@ int main() {
      
     //THE EXPERIMENTS
 
-    int nruns = 10000;
+    int nruns = 1000;
     map< pair<int, int>, vector<double> > relative_errors;
     
     //Initialize the relative_errors object
