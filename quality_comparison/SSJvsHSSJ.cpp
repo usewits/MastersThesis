@@ -8,6 +8,8 @@
 #include <functional>
 #include "sampleJoins.h"
 
+#define MILLION 1000000
+
 using namespace std;
 
 //Generate weights (n elements), with a selected skew ratio and number of discrete values.
@@ -212,7 +214,7 @@ int main() {
     double sigma_factor = 1.0/log(1/sigma);
 
     // Generate R1
-    int n1          = 1000000;
+    int n1          = 2*MILLION;
     double skew1    = 1.0;
     double ratio1   = 20.0;
     int n_discrete1 = 10.0;
@@ -272,7 +274,6 @@ int main() {
     auto R1_filter = no_filter;
     auto R2_filter = rand_filter;
  
-    auto J = join(stratR1, stratR2);
     
     //Compute the sampling weights required for SSJ
     vector<double> SSJ_prob(n1);
@@ -312,16 +313,36 @@ int main() {
     bool filtered_estimations[] = {false, true, false};
 
     //Compute and print the true aggregate values for each filter mode (actually the same for filtered and fltr.naive)
+
     vector<double> true_aggregates(3, 0.0);
     vector<double> selectivities(3, 0.0);
-    for(int i_f : filter_methods_used) {
-        for(auto j : J)
-            if(R1_filters[i_f](get<0>(j), get<1>(j)) && R2_filters[i_f](get<0>(j), get<2>(j))) {
-                true_aggregates[i_f] += aggregate_f(get<0>(j), get<1>(j), get<2>(j));
-                selectivities[i_f] ++;
-            }
 
-        selectivities[i_f] /= (double) J.size();
+    int full_join_size = 0;
+    for(auto strat1 : stratR1) {
+        double a = strat1.first;
+        auto strat2it = stratR2.find(a);
+        if(strat2it == stratR2.end())
+            continue; //key does not join
+        for(auto t1 : strat1.second)
+        for(auto t2 : strat2it->second) {
+            tdd j = make_tuple(t1.first, t1.second, t2.second);//Here j : J where J the full join
+                                                               //J = join(stratR1, stratR2);
+            full_join_size++;
+
+            double tA, tB, tC;
+            getValues(tA, tB, tC, j);
+
+            for(int i_f : filter_methods_used) {
+                if(R1_filters[i_f](tA, tB) && R2_filters[i_f](tA, tC)) {
+                    true_aggregates[i_f] += aggregate_f(tA, tB, tC);
+                    selectivities[i_f] ++;
+                }
+            }
+        }
+    }
+
+    for(int i_f : filter_methods_used) {
+        selectivities[i_f] /= (double) full_join_size;
         cout << "Exact aggregation (" << filter_types[i_f] << ") :" << true_aggregates[i_f] << " (selectivity " << selectivities[i_f]*100 << "% -> sample size ~ "<< round(m/selectivities[i_f])<< ")" << endl;
     }
     
@@ -362,6 +383,7 @@ int main() {
             bool recompute_normalisation = (run_i == 0);
             bool recompute_cdf = recompute_normalisation && !is_heuristic[i_s];
                 //Make generic_sample_join memoise normalisation only if it is not a heuristic sample join
+                //since heuristic sample joins do not require the full cdf
             double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
                                                   m, R1, R2, samplers[i_s], aggregate_f, 
                                                   R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f],
