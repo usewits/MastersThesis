@@ -152,14 +152,17 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
 
 
 int main() {
+    //initialize rng
     mt = mtwist_new();
-    mtwist_seed(mt, 832982837UL);
+    //mtwist_seed(mt, 832982837UL);
+    mtwist_seed(mt, time(NULL));
 
     int m = 100;
     double k_factor = 1.0;
     double sigma = 0.99;
     double sigma_factor = 1.0/log(1/sigma);
 
+    // Generate R1
     int n1          = 10000;
     double skew1    = 1.0;
     double ratio1   = 20.0;
@@ -169,6 +172,7 @@ int main() {
     vector<pdd> R1 = zipvec(R1A, R1B);
     auto stratR1 = stratify(R1);
 
+    // Generate R2
     int n2          = 1000;
     double skew2    = 1.0;
     double ratio2   = 50.0;
@@ -178,6 +182,7 @@ int main() {
     vector<pdd> R2 = zipvec(R2A, R2C);
     Tstrat stratR2 = stratify(R2);
    
+    // Define lambda functions
     auto aggregate_f = [] (double A, double B, double C) -> double {return C;};
 
     auto h1_unif =     []   (double A, double B) -> double {return 1.0;};
@@ -195,6 +200,7 @@ int main() {
                                 double w_min = (*min_element(w.begin(), w.end()));
                                 double sigma_factor = 1.0/log(1.0/sigma);
 
+                                //HWS-heuristic
                                 int k = k_factor*sigma_factor* m*m * w_max/w_min;
     
                                 vector<int> U = sample_indices(w.size(), k);
@@ -205,6 +211,7 @@ int main() {
                                 return weighted_sample(U, get_cdf(U_w), m);
                             };
 
+    //Selection filters: tuples that produce a true are selected
     auto no_filter = [] (double X, double Y) -> bool {return true;};
     auto range_filter = [] (double X, double Y) -> bool {return Y > 1.5e-3;};
 
@@ -222,6 +229,8 @@ int main() {
     }
     vector<double> SSJ_c_prob = get_cdf(SSJ_prob);
     
+
+    //A list of generic-sample-join parameters and their names
     set<int> sampling_methods_used = {0,1,2,3,4};
     string                          sample_types[] = {"SSJ     ","HSSJ    ","WS-Join ","HWS-Join",  "US-Join "};
     function<double(double,double)> h1_functions[] = { h1_unif,   h1_unif,  h1_weighted,h1_weighted, h1_US};
@@ -229,12 +238,28 @@ int main() {
     function<vector<int>(int, vector<double>)> samplers[] = 
                         { exact_sampler, heuristic_sampler, exact_sampler, heuristic_sampler, exact_sampler};
     
+    //Remove HWS-based methods if HWS causes oversampling 
+    double k_dbl = k_factor * m*m * sigma_factor
+            * (*max_element(SSJ_prob.begin(), SSJ_prob.end()))
+            / (*min_element(SSJ_prob.begin(), SSJ_prob.end()));//HWS-heuristic (double to avoid overflow)
+    cout << "k          :" << k_dbl << " (should be smaller than " << R1.size() << ")"<< endl;
+    if(k_dbl > R1.size()) {
+        cout << "WARNING: Skipping Heuristic methods!" << endl;
+        sampling_methods_used.erase(1);
+        sampling_methods_used.erase(3);
+    }
+    int k = round(k_dbl);
+
+
+
+    //A list of filter methods and their names
     set<int> filter_methods_used = {0,1,2};
     string filter_types[] = {"full      ","filtered  ","fltr.naive"};
     function<bool(double,double)> R1_filters[] = {no_filter, R1_filter, R1_filter};
     function<bool(double,double)> R2_filters[] = {no_filter, R2_filter, R2_filter};
     bool filtered_estimations[] = {false, true, false};
 
+    //Compute and print the true aggregate values for each filter mode (actually the same for filtered and fltr.naive)
     vector<double> true_aggregates(3, 0.0);
     vector<double> selectivities(3, 0.0);
     for(int i_f : filter_methods_used) {
@@ -245,30 +270,23 @@ int main() {
             }
 
         selectivities[i_f] /= (double) J.size();
-        cout << "Exact aggregation (" << filter_types[i_f] << ") :" << true_aggregates[i_f] << " (selectivity " << selectivities[i_f]*100 << "%)" << endl;
+        cout << "Exact aggregation (" << filter_types[i_f] << ") :" << true_aggregates[i_f] << " (selectivity " << selectivities[i_f]*100 << "% -> sample size ~ "<< round(m/selectivities[i_f])<< ")" << endl;
     }
-     
-    int nruns = 100;
     
+     
+    //THE EXPERIMENTS
+
+    int nruns = 1000;
     map< pair<int, int>, vector<double> > relative_errors;
     
+    //Initialize the relative_errors object
     for(int i_s : sampling_methods_used)
     for(int i_f : filter_methods_used) {
         relative_errors[make_pair(i_s, i_f)] = vector<double>(nruns, 0);
     }
     
-    double k_dbl = k_factor * m*m * sigma_factor
-            * (*max_element(SSJ_prob.begin(), SSJ_prob.end()))
-            / (*min_element(SSJ_prob.begin(), SSJ_prob.end()));//HWS-heuristic
-    cout << "k          :" << k_dbl << " (should be smaller than " << R1.size() << ")"<< endl;
-    if(k_dbl > R1.size()) {
-        cout << "WARNING: Skipping Heuristic methods!" << endl;
-        sampling_methods_used.erase(1);
-        sampling_methods_used.erase(3);
-    }
-    int k = round(k_dbl);
-
-    
+        
+    //Run experiments for each setting nruns times
     for(int run_i=0; run_i<nruns; run_i++) {
         if(round(10*run_i/(double)nruns) > round(10*(run_i-1)/(double)nruns)) {
             cout << round(100*run_i/(double)nruns) << "% done.." << endl;
@@ -282,9 +300,10 @@ int main() {
         }
     }
     
+    //Print the results (CI intervals)
     for(int i_f : filter_methods_used)
     for(int i_s : sampling_methods_used) {
-        cout << sample_types[i_s] << "(" << filter_types[i_f] << ", sample size " << round(m/selectivities[i_f]) << "):" << endl;
+        cout << sample_types[i_s] << "(" << filter_types[i_f] << "):" << endl;
         show_sigma_levels(relative_errors[make_pair(i_s, i_f)]);
     }
     
