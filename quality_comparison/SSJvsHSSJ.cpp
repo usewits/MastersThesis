@@ -202,6 +202,7 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
 }
 
 
+//total memory requirement: ~ 11*n1*64 bits
 int main() {
     //initialize rng
     mt = mtwist_new();
@@ -214,23 +215,29 @@ int main() {
     double sigma_factor = 1.0/log(1/sigma);
 
     // Generate R1
-    int n1          = 2*MILLION;
+    int n1          = 200*MILLION;
     double skew1    = 1.0;
     double ratio1   = 20.0;
     int n_discrete1 = 10.0;
-    vector<double> R1A = get_distribution(n1,skew1,ratio1,n_discrete1);
-    vector<double> R1B = get_distribution(n1,1.0,n1);
-    vector<pdd> R1 = zipvec(R1A, R1B);
-    auto stratR1 = stratify(R1);
+    vector<pdd> R1;//~n1*(2*64) bits of memory
+    {
+        vector<double> R1A = get_distribution(n1,skew1,ratio1,n_discrete1);
+        vector<double> R1B = get_distribution(n1,1.0,n1);
+        R1 = zipvec(R1A, R1B);
+    }
+    auto stratR1 = stratify(R1);//~n1*(2*64) bits of memory
 
     // Generate R2
-    int n2          = 1000;
+    int n2          = 2000;
     double skew2    = 1.0;
     double ratio2   = 50.0;
     int n_discrete2 = 10.0;
-    vector<double> R2A = get_distribution(n2,skew2,ratio2,n_discrete2);
-    vector<double> R2C = get_distribution(n2,1.0,n2);
-    vector<pdd> R2 = zipvec(R2A, R2C);
+    vector<pdd> R2;
+    {
+        vector<double> R2A = get_distribution(n2,skew2,ratio2,n_discrete2);
+        vector<double> R2C = get_distribution(n2,1.0,n2);
+        R2 = zipvec(R2A, R2C);
+    }
     Tstrat stratR2 = stratify(R2);
    
     // Define lambda functions
@@ -276,14 +283,12 @@ int main() {
  
     
     //Compute the sampling weights required for SSJ
-    vector<double> SSJ_prob(n1);
+    vector<double> SSJ_prob(n1);//~n1*64 bits of memory
     for(int i=0; i<n1; i++) {
         double key = R1[i].first;
         SSJ_prob[i] = stratR2[key].size();
            //note stratR2[key].size() = m_2(t_1.A)
     }
-    vector<double> SSJ_c_prob = get_cdf(SSJ_prob);
-    
 
     //A list of generic-sample-join parameters and their names
     set<int> sampling_methods_used = {0,1,2,3,4};
