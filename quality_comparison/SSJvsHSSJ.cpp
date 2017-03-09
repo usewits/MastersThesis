@@ -64,19 +64,24 @@ double HWS_heuristic_complete(const vector<double>& w, double w_ratio, double si
 
 //Generic function to estimate aggregates over joins
 //It can be used to obtain SSJ, HSSJ, WS-Join, HWS-Join or US-Join estimates (both filtered and unfiltered)
-//Runs in O(n1+n2) time if recompute_normalisation is set to true, and O(k+n2) time otherwise (not as fast as possible, in favour of shorter code)
+//Runs in O(k+n2) time (not as fast as possible, in favour of shorter code)
 //recompute_normalisation should be set to true whenever any of the following variables have changed: h1, h2, R1, R2, R1_filter, R2_filter
+//    This adds O(n1) to the runtime
+//recompute_cdf causes memoisation of the cdf on R1. This cdf is invalidated if the normalisation is recomputed.
+//    This adds O(n1) to the runtime.
+//    If no memoized cdf is available, it will be computed by the range_sampler if necessary instead, taking between O(1) and O(n1) time
+    
 //Uses O(n1) = ~3*n1*(2*64) bits of memory
 //Output probability is h1*h2
 double generic_sample_join(function<double(double,double)> h1, function<double(double)> h2, int m,
                                 const vector<pdd>& R1, const vector<pdd>& R2,
-                                function<vector<int>(int, vector<double>)> range_sampler,
+                                function<vector<int>(int, const vector<double>&, vector<double>*)> range_sampler,
                                             //sample(sample_size, weights)
                                 function<double(double, double, double)> aggregation_f,
                                 function<bool(double, double)> R1_filter,//Ri_filter are predicates; true => selected
                                 function<bool(double, double)> R2_filter,
                                 bool filtered_estimator, double filter_selectivity,
-                                bool recompute_normalisation = true) {
+                                bool recompute_normalisation, bool recompute_cdf) {
 
     //Compute (filtered) stratum weights and cdfs (O(n2) time, O(n2) memory)
     Tstrat R2_stratified = stratify(R2);//O(n2) memory
@@ -105,6 +110,15 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
     static double filtered_normalisation = 0.0; //Total weight of selection sigma(J)
     static vector<double> R1_sample_weights(R1.size());                //Sampling weights in R1 (n1 memory)
     static vector<double> R1_filtered_sample_weights(R1.size(), 0.0);  //Filtered sampling weights (n1 memory)
+    static vector<double> *R1_sample_weights_cdf = NULL; //At first, no cdf is available
+
+    if(recompute_normalisation || recompute_cdf) {
+        if(R1_sample_weights_cdf != NULL) {//deallocate cdf if necessary
+            vector<double> *tmp = R1_sample_weights_cdf;
+            R1_sample_weights_cdf = NULL;
+            delete tmp;
+        }
+    }
     if(recompute_normalisation) {
         //Compute normalisation factors (O(n1) time, 2*n1 memory)
         //These depend on: h1, h2, R1_filter, R2_filter, R1, R2 (and none of the other arguments)
@@ -122,15 +136,21 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
                 filtered_normalisation += R1_filtered_sample_weights[i];
             }
         }
+        R1_sample_weights_cdf = NULL; //invalidate cdf (it depends on the normalisation)
+    }
+
+    if(recompute_cdf) {
+        R1_sample_weights_cdf = new vector<double>(get_cdf(R1_sample_weights));
     }
     
     //Construct sample (O(k+m'[+n1]) time, O(k) memory)
     double over_sampling_factor = 1.2;
     int over_sampling_constant = 100;
     int S_size = round(over_sampling_constant+ceil(over_sampling_factor*m/filter_selectivity));
-    vector<int> S_indices = range_sampler(S_size, R1_sample_weights);//full HWS heuristic: O(n1) time, O(k) memory
-                                                                     //simple HWS heuristic: O(k) time and memory
-                                                                     //Reason: min and max of R1_sample_weights are not memoized
+    vector<int> S_indices = range_sampler(S_size, R1_sample_weights, R1_sample_weights_cdf);
+                            //full HWS heuristic: O(n1) time, O(k) memory
+                            //simple HWS heuristic: O(k) time and memory
+                            //Reason: min and max of R1_sample_weights are not memoized
     vector<pdd> S(S_size);
     vector<double> S_weights(S_size);
     for(int i=0; i<S_size; i++) {//O(m'=m/selectivity)=O(S_size) time
@@ -192,7 +212,7 @@ int main() {
     double sigma_factor = 1.0/log(1/sigma);
 
     // Generate R1
-    int n1          = 10000;
+    int n1          = 1000000;
     double skew1    = 1.0;
     double ratio1   = 20.0;
     int n_discrete1 = 10.0;
@@ -223,10 +243,16 @@ int main() {
 
     auto HWS_heuristic = *HWS_heuristic_simple;
 
-    auto exact_sampler = [] (int m, const vector<double>& w) -> vector<int> {
-                                return weighted_sample_indices(w.size(), get_cdf(w), m);
+    auto exact_sampler = [] (int m, const vector<double>& w, vector<double>* c_w) -> vector<int> {
+                                bool recompute_c_w = (c_w == NULL);
+                                if(recompute_c_w)
+                                    c_w = new vector<double>(get_cdf(w));//O(|w|) time
+                                vector<int> result = weighted_sample_indices(w.size(), *c_w, m);
+                                if(recompute_c_w)
+                                    delete c_w;
+                                return result;
                             };
-    auto heuristic_sampler = [&sigma,&k_factor,&HWS_heuristic] (int m, const vector<double>& w) -> vector<int> {
+    auto heuristic_sampler = [&sigma,&k_factor,&HWS_heuristic] (int m, const vector<double>& w, vector<double>* c_w) -> vector<int> {
 
                                 int k = round(HWS_heuristic(w, sigma, k_factor, m));//O(1) or O(|w|) time
     
@@ -263,7 +289,8 @@ int main() {
     string                          sample_types[] = {"SSJ     ","HSSJ    ","WS-Join ","HWS-Join",  "US-Join "};
     function<double(double,double)> h1_functions[] = { h1_unif,   h1_unif,  h1_weighted,h1_weighted, h1_US};
     function<double(double)>        h2_functions[] = { h2_unif,   h2_unif,  h2_weighted,h2_weighted, h2_unif};
-    function<vector<int>(int, const vector<double>&)> samplers[] = 
+    bool                            is_heuristic[] = {   false,      true,        false,       true,   false};
+    function<vector<int>(int, const vector<double>&, vector<double>*)> samplers[] = 
                         { exact_sampler, heuristic_sampler, exact_sampler, heuristic_sampler, exact_sampler};
     
     //Remove HWS-based methods if HWS causes oversampling 
@@ -275,7 +302,6 @@ int main() {
         sampling_methods_used.erase(3);
     }
     int k = round(k_dbl);
-
 
 
     //A list of filter methods and their names
@@ -334,10 +360,12 @@ int main() {
                     cout << "] " << round(100*run_i/(double)nruns) << "%\r" << flush;
             }
             bool recompute_normalisation = (run_i == 0);
+            bool recompute_cdf = recompute_normalisation && !is_heuristic[i_s];
+                //Make generic_sample_join memoise normalisation only if it is not a heuristic sample join
             double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
                                                   m, R1, R2, samplers[i_s], aggregate_f, 
                                                   R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f],
-                                                  selectivities[i_f], recompute_normalisation);
+                                                  selectivities[i_f], recompute_normalisation, recompute_cdf);
             relative_errors[make_pair(i_s, i_f)][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
         }
 
