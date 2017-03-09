@@ -47,14 +47,19 @@ void getValues(double& a, double& b, double& c, const tdd& t) {
 }
 
 
-double HWS_heuristic_simple(double w_ratio, double sigma, double k_factor, int m) {
+//O(1) time
+double HWS_heuristic_simple(const vector<double>& w, double sigma, double k_factor, int m) {
     return m*m;
 }
 
-double HWS_heuristic_complete(double w_ratio, double sigma, double k_factor, int m) {
+double HWS_heuristic_complete(const vector<double>& w, double w_ratio, double sigma, double k_factor, int m) {
+    double w_max = (*max_element(w.begin(), w.end()));//O(|w|) time
+    double w_min = (*min_element(w.begin(), w.end()));
     double sigma_factor = 1.0/log(1.0/sigma);
-    return k_factor*sigma_factor* m*m * w_ratio;
+    return k_factor*sigma_factor* m*m * w_max/w_min;
 }
+
+
 
 
 //Generic function to estimate aggregates over joins
@@ -93,10 +98,12 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
     }
 
     //Compute normalisation factors (O(n1) time, 2*n1 memory)
+    //These depend on: h1, h2, R1_filter, R2_filter, R1, R2 (and none of the other arguments)
     double normalisation = 0.0;          //Total weight of all elements in J
     double filtered_normalisation = 0.0; //Total weight of selection sigma(J)
     vector<double> R1_sample_weights(R1.size());                //Sampling weights in R1 (n1 memory)
     vector<double> R1_filtered_sample_weights(R1.size(), 0.0);  //Filtered sampling weights (n1 memory)
+    
     for(int i=0; i<R1.size(); i++) {//O(n1) time
         pdd t1 = R1[i];
         R1_sample_weights[i] = h1(t1.first, t1.second) * R2_stratum_weights[t1.first];
@@ -107,11 +114,13 @@ double generic_sample_join(function<double(double,double)> h1, function<double(d
         }
     }
     
-    //Construct sample (O(n1+k+m') time, O(k) memory)
+    //Construct sample (O(k+m'[+n1]) time, O(k) memory)
     double over_sampling_factor = 1.2;
     int over_sampling_constant = 100;
     int S_size = round(over_sampling_constant+ceil(over_sampling_factor*m/filter_selectivity));
-    vector<int> S_indices = range_sampler(S_size, R1_sample_weights);//O(n1+k) time, O(k) memory
+    vector<int> S_indices = range_sampler(S_size, R1_sample_weights);//full HWS heuristic: O(n1) time, O(k) memory
+                                                                     //simple HWS heuristic: O(k) time and memory
+                                                                     //Reason: min and max of R1_sample_weights are not memoized
     vector<pdd> S(S_size);
     vector<double> S_weights(S_size);
     for(int i=0; i<S_size; i++) {//O(m'=m/selectivity)=O(S_size) time
@@ -204,14 +213,12 @@ int main() {
 
     auto HWS_heuristic = *HWS_heuristic_simple;
 
-    auto exact_sampler = [] (int m, vector<double> w) -> vector<int> {
+    auto exact_sampler = [] (int m, const vector<double>& w) -> vector<int> {
                                 return weighted_sample_indices(w.size(), get_cdf(w), m);
                             };
-    auto heuristic_sampler = [&sigma,&k_factor,&HWS_heuristic] (int m, vector<double> w) -> vector<int> {
-                                double w_max = (*max_element(w.begin(), w.end()));//O(|w|) time
-                                double w_min = (*min_element(w.begin(), w.end()));
+    auto heuristic_sampler = [&sigma,&k_factor,&HWS_heuristic] (int m, const vector<double>& w) -> vector<int> {
 
-                                int k = round(HWS_heuristic(w_max/w_min, sigma, k_factor, m));
+                                int k = round(HWS_heuristic(w, sigma, k_factor, m));//O(1) or O(|w|) time
     
                                 vector<int> U = sample_indices(w.size(), k);//O(k) time
                                 vector<double> U_w(k);
@@ -246,12 +253,11 @@ int main() {
     string                          sample_types[] = {"SSJ     ","HSSJ    ","WS-Join ","HWS-Join",  "US-Join "};
     function<double(double,double)> h1_functions[] = { h1_unif,   h1_unif,  h1_weighted,h1_weighted, h1_US};
     function<double(double)>        h2_functions[] = { h2_unif,   h2_unif,  h2_weighted,h2_weighted, h2_unif};
-    function<vector<int>(int, vector<double>)> samplers[] = 
+    function<vector<int>(int, const vector<double>&)> samplers[] = 
                         { exact_sampler, heuristic_sampler, exact_sampler, heuristic_sampler, exact_sampler};
     
     //Remove HWS-based methods if HWS causes oversampling 
-    double k_dbl = HWS_heuristic((*max_element(SSJ_prob.begin(), SSJ_prob.end()))/(*min_element(SSJ_prob.begin(), SSJ_prob.end())),
-                                     sigma, k_factor, m);
+    double k_dbl = HWS_heuristic(SSJ_prob, sigma, k_factor, m);
     cout << "k = " << k_dbl << " (should be smaller than " << R1.size() << " for AWS)"<< endl;
     if(k_dbl > R1.size()) {
         cout << "WARNING: Skipping Heuristic methods!" << endl;
