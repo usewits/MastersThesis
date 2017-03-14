@@ -51,14 +51,14 @@ void getValues(double& a, double& b, double& c, const tdd& t) {
 
 //O(1) time
 double HWS_heuristic_simple(const vector<double>& w, double sigma, double k_factor, int m) {
-    return m*m;
+    return (double)m*(double)m;
 }
 
 double HWS_heuristic_complete(const vector<double>& w, double w_ratio, double sigma, double k_factor, int m) {
     double w_max = (*max_element(w.begin(), w.end()));//O(|w|) time
     double w_min = (*min_element(w.begin(), w.end()));
     double sigma_factor = 1.0/log(1.0/sigma);
-    return k_factor*sigma_factor* m*m * w_max/w_min;
+    return k_factor*sigma_factor* (double)m*(double)m * w_max/w_min;
 }
 
 
@@ -312,25 +312,64 @@ int main() {
     vector<long long> filtered_join_size(3, 0);
     vector<double> selectivities(3, 0.0);
 
-    long long full_join_size = 0;
-    for(auto strat1 : stratR1) {
-        double a = strat1.first;
-        auto strat2it = stratR2.find(a);
-        if(strat2it == stratR2.end())
-            continue; //key does not join
-        for(auto t1 : strat1.second)
-        for(auto t2 : strat2it->second) {
-            tdd j = make_tuple(t1.first, t1.second, t2.second);//Here j : J where J the full join
-                                                               //J = join(stratR1, stratR2);
-            full_join_size++;
+    bool aggregate_f_independent_of_B = true;//True aggregate can be computed faster if simple.
+    if(aggregate_f_independent_of_B) {//O(n1+n2) time
+        map<double, double> R2_exact_aggregates[3];
+        map<double, int> R2_exact_sizes[3];
+        for(auto strat2 : stratR2) {
+            double tB = -9999;
+            for(auto t2 : strat2.second) {
+                double tA = t2.first;
+                double tC = t2.second;
+                for(int i_f : filter_methods_used) {
+                    if(R1_filters[i_f](tA, tB) && R2_filters[i_f](tA, tC)) {
+                        R2_exact_aggregates[i_f][tA] += aggregate_f(tA, tB, tC);
+                        R2_exact_sizes[i_f][tA]++;
+                    }
+                }
+            }
+        }
+        
+        long long full_join_size = 0;
+        for(auto strat1 : stratR1) {
+            double a = strat1.first;
+            auto strat2it = stratR2.find(a);
+            if(strat2it == stratR2.end())
+                continue; //key does not join
+            for(auto t1 : strat1.second) {
+                double tA = t1.first;
+                double tB = t1.second;
+                full_join_size+= R2_exact_sizes[0][tA];
 
-            double tA, tB, tC;
-            getValues(tA, tB, tC, j);
+                for(int i_f : filter_methods_used) {
+                    if(R1_filters[i_f](tA, tB)) {
+                        true_aggregates[i_f] += R2_exact_aggregates[i_f][tA];
+                        filtered_join_size[i_f] += R2_exact_sizes[i_f][tA];
+                    }
+                }
+            }
+        }
+    } else {//O(|J|) time
+        long long full_join_size = 0;
+        for(auto strat1 : stratR1) {
+            double a = strat1.first;
+            auto strat2it = stratR2.find(a);
+            if(strat2it == stratR2.end())
+                continue; //key does not join
+            for(auto t1 : strat1.second)
+            for(auto t2 : strat2it->second) {
+                tdd j = make_tuple(t1.first, t1.second, t2.second);//Here j : J where J the full join
+                                                                   //J = join(stratR1, stratR2);
+                full_join_size++;
 
-            for(int i_f : filter_methods_used) {
-                if(R1_filters[i_f](tA, tB) && R2_filters[i_f](tA, tC)) {
-                    true_aggregates[i_f] += aggregate_f(tA, tB, tC);
-                    filtered_join_size[i_f] ++;
+                double tA, tB, tC;
+                getValues(tA, tB, tC, j);
+
+                for(int i_f : filter_methods_used) {
+                    if(R1_filters[i_f](tA, tB) && R2_filters[i_f](tA, tC)) {
+                        true_aggregates[i_f] += aggregate_f(tA, tB, tC);
+                        filtered_join_size[i_f] ++;
+                    }
                 }
             }
         }
