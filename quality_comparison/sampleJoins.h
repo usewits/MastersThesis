@@ -224,4 +224,11 @@ void show_sigma_levels(vector<double>& relative_errors) {
     }
 }
 
-
+void show_sd(vector<double>& relative_errors) {
+    double mean = accumulate(relative_errors.begin(),relative_errors.end(),0.0)/relative_errors.size();
+    double variance = 0;
+    for(auto err : relative_errors)
+        variance += (mean-err)*(mean-err);
+    double sd = sqrt(variance);
+    cout << "\tapproximation (mean = "<<mean<<", sd = "<<sd<<")"<<endl;
+}

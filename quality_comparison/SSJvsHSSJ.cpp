@@ -313,6 +313,8 @@ int main() {
     vector<double> selectivities(3, 0.0);
 
     bool aggregate_f_independent_of_B = true;//True aggregate can be computed faster if simple.
+
+    long long full_join_size = 0;
     if(aggregate_f_independent_of_B) {//O(n1+n2) time
         map<double, double> R2_exact_aggregates[3];
         map<double, int> R2_exact_sizes[3];
@@ -330,7 +332,6 @@ int main() {
             }
         }
         
-        long long full_join_size = 0;
         for(auto strat1 : stratR1) {
             double a = strat1.first;
             auto strat2it = stratR2.find(a);
@@ -350,7 +351,6 @@ int main() {
             }
         }
     } else {//O(|J|) time
-        long long full_join_size = 0;
         for(auto strat1 : stratR1) {
             double a = strat1.first;
             auto strat2it = stratR2.find(a);
@@ -454,7 +454,9 @@ int main() {
 
             //Print the results (CI intervals)
             cout << sample_types[i_s] << "(" << filter_types[i_f] << "):" << endl;
-            show_sigma_levels(relative_errors[make_pair(i_s, i_f)]);
+            //show_sigma_levels(relative_errors[make_pair(i_s, i_f)]);
+            show_sd(relative_errors[make_pair(i_s, i_f)]);
+
         }
     }
 
