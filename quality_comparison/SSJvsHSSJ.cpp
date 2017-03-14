@@ -71,7 +71,7 @@ double HWS_heuristic_complete(const vector<double>& w, double w_ratio, double si
 //    This adds O(n1) to the runtime
 //recompute_cdf causes memoisation of the cdf on R1. This cdf is invalidated if the normalisation is recomputed.
 //    This adds O(n1) to the runtime.
-//    If no memoized cdf is available, it will be computed by the range_sampler if necessary instead, taking between O(1) and O(n1) time
+//    If no memoized cdf is available, it will be computed by the range_sampler if necessary instead, taking O(n1) time. Since the HWS implementation of range_sampler does not need a CDF, precomputation of the CDF is not efficient.
     
 //Uses O(n1) = ~3*n1*(2*64) bits of memory
 //Output probability is h1*h2
@@ -215,7 +215,7 @@ int main() {
     double sigma_factor = 1.0/log(1/sigma);
 
     // Generate R1
-    int n1          = 2*MILLION;
+    int n1          = 200*MILLION;
     double skew1    = 1.0;
     double ratio1   = 20.0;
     int n_discrete1 = 10.0;
@@ -385,50 +385,50 @@ int main() {
     //THE EXPERIMENTS
 
     int nruns = 10;
-    for(auto m : {1,10,100,1000,10000,1000000,10000000,100000000}) {
-        map< pair<int, int>, vector<double> > relative_errors;
-        
-        //Initialize the relative_errors object
-        for(int i_s : sampling_methods_used)
-        for(int i_f : filter_methods_used) {
-            relative_errors[make_pair(i_s, i_f)] = vector<double>(nruns, 0);
-        }
- 
-        cout << "#Running " << nruns << "*" << relative_errors.size() << " experiments..." << endl;
- 
-        //Remove HWS-based methods if HWS causes oversampling 
-        double k_dbl = HWS_heuristic(SSJ_prob, sigma, k_factor, m);
-        cout << "#k = " << k_dbl << " (should be smaller than " << R1.size() << " for AWS)"<< endl;
-        if(k_dbl > R1.size()) {
-            cout << "#WARNING: Skipping Heuristic methods!" << endl;
-            sampling_methods_used.erase(1);
-            sampling_methods_used.erase(3);
-        } else {
-            sampling_methods_used.insert(1);
-            sampling_methods_used.insert(3);
-        }
+    map< pair<int, int>, vector<double> > relative_errors;
+    
+    //Initialize the relative_errors object
+    for(int i_s : sampling_methods_used)
+    for(int i_f : filter_methods_used) {
+        relative_errors[make_pair(i_s, i_f)] = vector<double>(nruns, 0);
+    }
 
-        //Run experiments for each setting nruns times
-        
-        for(int i_f : filter_methods_used)
-        for(int i_s : sampling_methods_used) {
+    cout << "#Running " << nruns << "*" << relative_errors.size() << " experiments..." << endl;
+
+    //Run experiments for each setting nruns times
+    
+    for(int i_f : filter_methods_used)
+    for(int i_s : sampling_methods_used) {
+
+        bool recompute_normalisation = true;
+        bool recompute_cdf = recompute_normalisation && !is_heuristic[i_s];
+        for(auto m : {1,10,100,1000,10000,1000000,10000000,100000000}) {
+    
+            double k_dbl = HWS_heuristic(SSJ_prob, sigma, k_factor, m);
+            //Skip test is k is large and HWS is used to avoid oversampling
+            if(k_dbl > R1.size())
+                if(is_heuristic[i_s])//Method is HWS based
+                    continue;//skip this m
+            if(m > R1.size())
+                continue;//oversampling in non-heuristic case
+            
             for(int run_i=0; run_i<nruns; run_i++) {
-                bool recompute_normalisation = (run_i == 0);
-                bool recompute_cdf = recompute_normalisation && !is_heuristic[i_s];
                     //Make generic_sample_join memoise normalisation only if it is not a heuristic sample join
                     //since heuristic sample joins do not require the full cdf
                 double estimate = generic_sample_join(h1_functions[i_s], h2_functions[i_s], 
-                                                      m, R1, R2, samplers[i_s], aggregate_f, 
-                                                      R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f],
-                                                      selectivities[i_f], recompute_normalisation, recompute_cdf);
+                                      m, R1, R2, samplers[i_s], aggregate_f, 
+                                      R1_filters[i_f], R2_filters[i_f], filtered_estimations[i_f],
+                                      selectivities[i_f], recompute_normalisation, recompute_cdf);
                 relative_errors[make_pair(i_s, i_f)][run_i] = abs(true_aggregates[i_f]-estimate)/true_aggregates[i_f];
+                recompute_normalisation = false;
+                recompute_cdf = false;
             }
 
             //Print the results (CI intervals)
             cout << m << ",\""<< sample_types[i_s] << "\", \"" << filter_types[i_f] << "\",";
             //show_sigma_levels(relative_errors[make_pair(i_s, i_f)]);
             show_sd(relative_errors[make_pair(i_s, i_f)]);
-	    cout << endl;
+            cout << endl;
         }
     }
 
