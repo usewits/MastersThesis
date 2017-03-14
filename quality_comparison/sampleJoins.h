@@ -230,5 +230,5 @@ void show_sd(vector<double>& relative_errors) {
     for(auto err : relative_errors)
         variance += (mean-err)*(mean-err);
     double sd = sqrt(variance);
-    cout << "\tapproximation (mean = "<<mean<<", sd = "<<sd<<")"<<endl;
+    cout << mean << ", " << sd;
 }

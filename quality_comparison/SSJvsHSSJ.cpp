@@ -292,7 +292,7 @@ int main() {
 
     //A list of generic-sample-join parameters and their names
     set<int> sampling_methods_used = {0,1,2,3,4};
-    string                          sample_types[] = {"SSJ     ","HSSJ    ","WS-Join ","HWS-Join",  "US-Join "};
+    string                          sample_types[] = {"SSJ",     "HSSJ",   "WS-Join",  "HWS-Join",  "US-Join"};
     function<double(double,double)> h1_functions[] = { h1_unif,   h1_unif,  h1_weighted,h1_weighted, h1_US};
     function<double(double)>        h2_functions[] = { h2_unif,   h2_unif,  h2_weighted,h2_weighted, h2_unif};
     bool                            is_heuristic[] = {   false,      true,        false,       true,   false};
@@ -301,7 +301,7 @@ int main() {
    
     //A list of filter methods and their names
     set<int> filter_methods_used = {0,1,2};
-    string filter_types[] = {"full      ","filtered  ","fltr.naive"};
+    string filter_types[] = {"full", "filtered","filtered naive"};
     function<bool(double,double)> R1_filters[] = {no_filter, R1_filter, R1_filter};
     function<bool(double,double)> R2_filters[] = {no_filter, R2_filter, R2_filter};
     bool filtered_estimations[] = {false, true, false};
@@ -374,24 +374,18 @@ int main() {
             }
         }
     }
-    cout << "Join size: " << full_join_size << endl;
+    cout << "#Join size: " << full_join_size << endl;
 
     for(int i_f : filter_methods_used) {
         selectivities[i_f] = filtered_join_size[i_f]/(double) full_join_size;
-        cout << "Exact aggregation (" << filter_types[i_f] << ") :" << true_aggregates[i_f] << " (selectivity " << selectivities[i_f]*100 << "% -> sample size ~ "<< round(m/selectivities[i_f])<< ")" << endl;
+        cout << "#Exact aggregation (" << filter_types[i_f] << ") :" << true_aggregates[i_f] << " (selectivity " << selectivities[i_f]*100 << "% -> sample size ~ "<< round(m/selectivities[i_f])<< ")" << endl;
     }
     
      
     //THE EXPERIMENTS
 
-    int nruns = 1000;
-    while(true) {
-        cout << "Sample size? m = " << flush;
-        cin >> m;
-        cout << "Runs? nruns = " << flush;
-        cin >> nruns;
-        //Couls also set HWS mode..
-        
+    int nruns = 10;
+    for(auto m : {1,10,100,1000,10000,1000000,10000000,100000000}) {
         map< pair<int, int>, vector<double> > relative_errors;
         
         //Initialize the relative_errors object
@@ -400,13 +394,13 @@ int main() {
             relative_errors[make_pair(i_s, i_f)] = vector<double>(nruns, 0);
         }
  
-        cout << "Running " << nruns << "*" << relative_errors.size() << " experiments..." << endl;
+        cout << "#Running " << nruns << "*" << relative_errors.size() << " experiments..." << endl;
  
         //Remove HWS-based methods if HWS causes oversampling 
         double k_dbl = HWS_heuristic(SSJ_prob, sigma, k_factor, m);
-        cout << "k = " << k_dbl << " (should be smaller than " << R1.size() << " for AWS)"<< endl;
+        cout << "#k = " << k_dbl << " (should be smaller than " << R1.size() << " for AWS)"<< endl;
         if(k_dbl > R1.size()) {
-            cout << "WARNING: Skipping Heuristic methods!" << endl;
+            cout << "#WARNING: Skipping Heuristic methods!" << endl;
             sampling_methods_used.erase(1);
             sampling_methods_used.erase(3);
         } else {
@@ -414,33 +408,11 @@ int main() {
             sampling_methods_used.insert(3);
         }
 
-        
-        char confirm = 'n';
-        cout << "Are you sure? (y/n) " << flush;
-        cin >> confirm;
-        if(confirm != 'y')
-            continue;
-            
         //Run experiments for each setting nruns times
         
         for(int i_f : filter_methods_used)
         for(int i_s : sampling_methods_used) {
-            int progress_width = 50;
             for(int run_i=0; run_i<nruns; run_i++) {
-                if(floor(progress_width*(run_i+1)/(double)nruns) > floor(progress_width*(run_i)/(double)nruns)) {
-                    int n_bars = round(progress_width*run_i/(double)nruns);//out of 100
-                    cout << " [";
-                    for(int progress = 0; progress < progress_width; progress++) {
-                        if(progress < n_bars)
-                            cout << "#";
-                        else
-                            cout << " ";
-                    }
-                    if(progress_width == n_bars)
-                        cout << "] DONE! " << endl;
-                    else
-                        cout << "] " << round(100*run_i/(double)nruns) << "%\r" << flush;
-                }
                 bool recompute_normalisation = (run_i == 0);
                 bool recompute_cdf = recompute_normalisation && !is_heuristic[i_s];
                     //Make generic_sample_join memoise normalisation only if it is not a heuristic sample join
@@ -453,10 +425,10 @@ int main() {
             }
 
             //Print the results (CI intervals)
-            cout << sample_types[i_s] << "(" << filter_types[i_f] << "):" << endl;
+            cout << m << ",\""<< sample_types[i_s] << "\", \"" << filter_types[i_f] << "\",";
             //show_sigma_levels(relative_errors[make_pair(i_s, i_f)]);
             show_sd(relative_errors[make_pair(i_s, i_f)]);
-
+	    cout << endl;
         }
     }
 
