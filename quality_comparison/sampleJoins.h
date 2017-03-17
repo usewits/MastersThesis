@@ -232,3 +232,8 @@ void show_sd(vector<double>& relative_errors) {
     double sd = sqrt(variance);
     cout << mean << ", " << sd;
 }
+
+void show_all(vector<double>& relative_errors) {
+    for(double relative_error : relative_errors)
+        cout << relative_error << ", ";
+}
